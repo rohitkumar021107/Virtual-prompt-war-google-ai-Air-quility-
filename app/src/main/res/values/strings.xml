@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">AirCare AI</string>
+    <string name="tagline">Breathe Better. Live Smarter. Protect Tomorrow.</string>
+    <string name="sample_ai_notice">Sample AI Preview — Live Gemini AI features require Firebase to be enabled.</string>
+    <string name="notification_channel_name">Air Quality Deterioration Alerts</string>
+    <string name="notification_channel_desc">Notifies you when local US AQI crosses your configured safety threshold.</string>
+</resources>

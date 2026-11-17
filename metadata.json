@@ -1,0 +1,6 @@
+{
+  "name": "AirCare AI",
+  "description": "Breathe Better. Live Smarter. Protect Tomorrow. Intelligent air quality, winter smog protection, family planner, indoor air advisor, and sustainability companion.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
