@@ -6,6 +6,7 @@ import com.example.data.remote.OpenMeteoGeocodingApi
 import com.example.domain.model.AirQualitySnapshot
 import com.example.domain.model.AqiCalculator
 import com.example.domain.model.HourlyAirPoint
+import com.example.domain.model.InputSanitizer
 import com.example.domain.model.LocationCity
 import com.example.domain.model.PollutantMetrics
 import kotlinx.coroutines.CancellationException
@@ -15,6 +16,9 @@ class AirQualityRepository(
     private val geocodingApi: OpenMeteoGeocodingApi = NetworkModule.geocodingApi
 ) {
     suspend fun fetchAirQuality(city: LocationCity): Result<AirQualitySnapshot> {
+        if (!InputSanitizer.isValidCoordinates(city.latitude, city.longitude)) {
+            return Result.failure(IllegalArgumentException("Invalid city coordinates."))
+        }
         return try {
             val response = airQualityApi.getAirQuality(
                 latitude = city.latitude,
@@ -78,20 +82,24 @@ class AirQualityRepository(
     }
 
     suspend fun searchCities(query: String): Result<List<LocationCity>> {
-        val trimmed = query.trim()
-        if (trimmed.length < 2) return Result.success(emptyList())
+        val sanitized = InputSanitizer.cleanText(query, maxLength = 80)
+        if (sanitized.length < 2) return Result.success(emptyList())
         return try {
-            val response = geocodingApi.searchCities(query = trimmed)
-            val cities = (response.results ?: emptyList()).map { dto ->
-                LocationCity(
-                    name = dto.name,
-                    region = dto.admin1 ?: "",
-                    country = dto.country ?: "",
-                    latitude = dto.latitude,
-                    longitude = dto.longitude,
-                    timezone = dto.timezone ?: "auto",
-                    isDefaultDemo = false
-                )
+            val response = geocodingApi.searchCities(query = sanitized)
+            val cities = (response.results ?: emptyList()).mapNotNull { dto ->
+                if (!InputSanitizer.isValidCoordinates(dto.latitude, dto.longitude) || dto.name.isBlank()) {
+                    null
+                } else {
+                    LocationCity(
+                        name = dto.name,
+                        region = dto.admin1 ?: "",
+                        country = dto.country ?: "",
+                        latitude = dto.latitude,
+                        longitude = dto.longitude,
+                        timezone = dto.timezone ?: "auto",
+                        isDefaultDemo = false
+                    )
+                }
             }
             Result.success(cities)
         } catch (e: CancellationException) {

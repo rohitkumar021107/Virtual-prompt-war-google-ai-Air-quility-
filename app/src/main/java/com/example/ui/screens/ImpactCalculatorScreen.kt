@@ -59,7 +59,8 @@ fun ImpactCalculatorScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = 960.dp),
+            .widthIn(max = 960.dp)
+            .testTag("impact_list"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {

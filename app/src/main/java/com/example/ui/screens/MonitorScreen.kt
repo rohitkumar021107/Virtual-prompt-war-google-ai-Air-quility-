@@ -23,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -50,6 +50,7 @@ import com.example.domain.model.LocationCity
 import com.example.ui.AirQualityUiState
 import com.example.ui.components.AqiSeverityBadge
 import com.example.ui.components.AqiSeverityScaleBar
+import com.example.ui.components.ErrorStateCard
 import com.example.ui.components.HealthEnvironmentalDisclaimer
 import com.example.ui.components.HourlyAqiTrendChart
 import java.util.Locale
@@ -68,7 +69,8 @@ fun MonitorScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = 960.dp),
+            .widthIn(max = 960.dp)
+            .testTag("monitor_list"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -163,25 +165,24 @@ fun MonitorScreen(
                             .padding(32.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator()
+                        CircularProgressIndicator(
+                            modifier = Modifier.semantics {
+                                contentDescription = "Loading air quality monitor readings"
+                            }
+                        )
                     }
                 }
             }
 
             is AirQualityUiState.Error -> {
                 item {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("Unable to load live readings", style = MaterialTheme.typography.titleMedium)
-                            Text(airQualityState.message, style = MaterialTheme.typography.bodySmall)
-                            Button(onClick = onRefresh) { Text("Retry") }
-                        }
-                    }
+                    ErrorStateCard(
+                        title = "Unable to load live readings",
+                        message = airQualityState.message,
+                        retryLabel = "Retry",
+                        onRetry = onRefresh,
+                        retryTestTag = "monitor_retry_button"
+                    )
                 }
             }
 
@@ -250,10 +251,20 @@ fun MonitorScreen(
                                         verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         cpcb.subIndices.forEach { (pollutant, sub) ->
-                                            AssistChip(
-                                                onClick = {},
-                                                label = { Text("$pollutant: $sub") }
-                                            )
+                                            Surface(
+                                                modifier = Modifier.semantics(mergeDescendants = true) {
+                                                    contentDescription = "$pollutant sub-index $sub"
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = MaterialTheme.colorScheme.secondaryContainer
+                                            ) {
+                                                Text(
+                                                    text = "$pollutant: $sub",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                                )
+                                            }
                                         }
                                     }
                                     Text(

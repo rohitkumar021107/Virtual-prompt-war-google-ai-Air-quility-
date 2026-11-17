@@ -7,6 +7,7 @@ import com.example.ui.theme.AqiHazardous
 import com.example.ui.theme.AqiHazardousContainer
 import com.example.ui.theme.AqiModerate
 import com.example.ui.theme.AqiModerateContainer
+import com.example.ui.theme.AqiOnContainer
 import com.example.ui.theme.AqiSensitive
 import com.example.ui.theme.AqiSensitiveContainer
 import com.example.ui.theme.AqiUnhealthy
@@ -57,7 +58,8 @@ enum class AqiSeverity(
     val containerColor: Color,
     val alertHeadline: String,
     val precautionSummary: String,
-    val precautions: List<String>
+    val precautions: List<String>,
+    val onContainerColor: Color = AqiOnContainer
 ) {
     GOOD(
         label = "Good",

@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AirCareDao
@@ -18,15 +19,17 @@ import com.example.domain.model.AirQualitySnapshot
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.CommuteMode
 import com.example.domain.model.DashboardAiInsight
+import com.example.domain.model.ErrorMessageMapper
+import com.example.domain.model.ErrorMessageMapper.Context
 import com.example.domain.model.FamilyProtectionPlan
 import com.example.domain.model.ImpactCalculation
 import com.example.domain.model.ImpactCalculator
+import com.example.domain.model.InputSanitizer
 import com.example.domain.model.LocationCity
 import com.example.notifications.AirAlertNotifier
 import com.example.notifications.AlertNotifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -137,6 +140,9 @@ class MainViewModel internal constructor(
     private val _alertBannerStatus = MutableStateFlow<String?>(null)
     val alertBannerStatus: StateFlow<String?> = _alertBannerStatus.asStateFlow()
 
+    private var refreshJob: Job? = null
+    private var insightJob: Job? = null
+    private var familyPlanJob: Job? = null
     private var chatJob: Job? = null
     private var citySearchJob: Job? = null
 
@@ -155,7 +161,8 @@ class MainViewModel internal constructor(
     }
 
     fun refreshAirQuality(city: LocationCity = selectedCity.value) {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             _airQualityState.value = AirQualityUiState.Loading
             val result = airQualityRepo.fetchAirQuality(city)
             result.fold(
@@ -165,9 +172,9 @@ class MainViewModel internal constructor(
                     maybeSendNotification(snapshot)
                 },
                 onFailure = { error ->
+                    Log.w(TAG, "Air quality fetch failed (${error.javaClass.simpleName}).")
                     _airQualityState.value = AirQualityUiState.Error(
-                        message = error.localizedMessage
-                            ?: "Unable to reach Open-Meteo Air Quality API. Check connectivity and retry.",
+                        message = ErrorMessageMapper.toUserMessage(error, Context.AIR_QUALITY_FETCH),
                         lastCity = city
                     )
                     generateDashboardInsight(null)
@@ -182,14 +189,16 @@ class MainViewModel internal constructor(
     }
 
     private fun generateDashboardInsight(snapshot: AirQualitySnapshot?) {
-        viewModelScope.launch {
+        insightJob?.cancel()
+        insightJob = viewModelScope.launch {
             _dashboardInsightState.value = DashboardInsightUiState.Loading
             val profile = dao.getFamilyProfileOnce()
             aiRepo.generateDashboardInsight(snapshot, profile).fold(
                 onSuccess = { _dashboardInsightState.value = DashboardInsightUiState.Success(it) },
                 onFailure = { err ->
+                    Log.w(TAG, "Dashboard insight failed (${err.javaClass.simpleName}).")
                     _dashboardInsightState.value = DashboardInsightUiState.Error(
-                        err.localizedMessage ?: "Failed to generate Gemini insight."
+                        ErrorMessageMapper.toUserMessage(err, Context.DASHBOARD_INSIGHT)
                     )
                 }
             )
@@ -201,7 +210,7 @@ class MainViewModel internal constructor(
         val usAqi = snapshot.usAqi ?: return
         if (settings.alertsEnabled && usAqi >= settings.aqiThreshold) {
             val now = System.currentTimeMillis()
-            if (now - settings.lastNotifiedTimestamp > 30 * 60 * 1000L) {
+            if (now - settings.lastNotifiedTimestamp > ALERT_COOLDOWN_MS) {
                 val posted = notifier.notifyIfNeeded(snapshot, settings.aqiThreshold)
                 if (posted) {
                     prefsRepo.markAlertSent(now)
@@ -226,21 +235,22 @@ class MainViewModel internal constructor(
 
     fun searchCities(query: String, debounceMs: Long = 300L) {
         citySearchJob?.cancel()
-        val trimmed = query.trim()
-        if (trimmed.length < 2) {
+        val sanitized = InputSanitizer.cleanText(query, maxLength = 80)
+        if (sanitized.length < 2) {
             _citySearchState.value = CitySearchState.Idle
             return
         }
         citySearchJob = viewModelScope.launch {
             if (debounceMs > 0) delay(debounceMs)
             _citySearchState.value = CitySearchState.Searching
-            airQualityRepo.searchCities(trimmed).fold(
+            airQualityRepo.searchCities(sanitized).fold(
                 onSuccess = { list ->
                     _citySearchState.value = CitySearchState.Results(list)
                 },
                 onFailure = { e ->
+                    Log.w(TAG, "City search failed (${e.javaClass.simpleName}).")
                     _citySearchState.value = CitySearchState.Error(
-                        e.localizedMessage ?: "City search failed."
+                        ErrorMessageMapper.toUserMessage(e, Context.CITY_SEARCH)
                     )
                 }
             )
@@ -258,19 +268,16 @@ class MainViewModel internal constructor(
             prefsRepo.updateAlertSettings(enabled, clampedThreshold)
             if (enabled) {
                 val currentSnapshot = (_airQualityState.value as? AirQualityUiState.Success)?.snapshot
-                if (currentSnapshot != null) {
-                    val usAqi = currentSnapshot.usAqi
-                    if (usAqi != null && usAqi >= clampedThreshold) {
-                        val sent = notifier.notifyIfNeeded(currentSnapshot, clampedThreshold)
-                        _alertBannerStatus.value = if (sent) {
-                            "Alert active & triggered: ${currentSnapshot.location.name} AQI is $usAqi."
-                        } else if (!notifier.hasNotificationPermission()) {
-                            "Alert saved, but notification permission is required for system notifications."
-                        } else {
-                            null
-                        }
+                val usAqi = currentSnapshot?.usAqi
+                if (currentSnapshot != null && usAqi != null && usAqi >= clampedThreshold) {
+                    val sent = notifier.notifyIfNeeded(currentSnapshot, clampedThreshold)
+                    _alertBannerStatus.value = if (sent) {
+                        prefsRepo.markAlertSent(System.currentTimeMillis())
+                        "Alert active & triggered: ${currentSnapshot.location.name} AQI is $usAqi."
+                    } else if (!notifier.hasNotificationPermission()) {
+                        "Alert saved, but notification permission is required for system notifications."
                     } else {
-                        _alertBannerStatus.value = "Alerts enabled for US AQI ≥ $clampedThreshold."
+                        null
                     }
                 } else {
                     _alertBannerStatus.value = "Alerts enabled for US AQI ≥ $clampedThreshold."
@@ -284,9 +291,24 @@ class MainViewModel internal constructor(
     fun hasNotificationPermission(): Boolean = notifier.hasNotificationPermission()
 
     fun saveAndGenerateFamilyPlan(profile: FamilyProfileEntity) {
-        viewModelScope.launch {
+        familyPlanJob?.cancel()
+        familyPlanJob = viewModelScope.launch {
             _familyPlanState.value = FamilyPlanUiState.Loading
-            val normalized = profile.copy(id = 1)
+            val normalized = profile.copy(
+                id = 1,
+                locationName = InputSanitizer.cleanText(profile.locationName, 80)
+                    .ifBlank { selectedCity.value.displayName },
+                memberCount = profile.memberCount.coerceIn(1, 30),
+                workingAdults = profile.workingAdults.coerceIn(0, 20),
+                children = profile.children.coerceIn(0, 20),
+                olderAdults = profile.olderAdults.coerceIn(0, 20),
+                outdoorWorkers = profile.outdoorWorkers.coerceIn(0, 20),
+                dailyTravelKm = profile.dailyTravelKm.coerceIn(0, 300),
+                transportMethod = InputSanitizer.cleanText(profile.transportMethod, 60),
+                budgetPreference = InputSanitizer.cleanText(profile.budgetPreference, 40),
+                mainConcerns = InputSanitizer.cleanText(profile.mainConcerns, 200)
+                    .ifBlank { "Winter smog & daily commute" }
+            )
             dao.saveFamilyProfile(normalized)
             val currentSnapshot = (_airQualityState.value as? AirQualityUiState.Success)?.snapshot
             aiRepo.generateFamilyPlan(normalized, currentSnapshot).fold(
@@ -295,8 +317,9 @@ class MainViewModel internal constructor(
                     generateDashboardInsight(currentSnapshot)
                 },
                 onFailure = { e ->
+                    Log.w(TAG, "Family plan failed (${e.javaClass.simpleName}).")
                     _familyPlanState.value = FamilyPlanUiState.Error(
-                        e.localizedMessage ?: "Could not generate family protection plan."
+                        ErrorMessageMapper.toUserMessage(e, Context.FAMILY_PLAN)
                     )
                 }
             )
@@ -346,14 +369,19 @@ class MainViewModel internal constructor(
         description: String,
         area: String
     ) {
-        if (title.isBlank() || description.isBlank()) return
+        val cleanTitle = InputSanitizer.cleanText(title, 100)
+        val cleanDesc = InputSanitizer.cleanText(description, 400)
+        val cleanArea = InputSanitizer.cleanText(area, 80).ifBlank { selectedCity.value.name }
+        val allowedCategory = if (category in ALLOWED_POST_CATEGORIES) category else "INITIATIVE"
+        if (cleanTitle.isBlank() || cleanDesc.isBlank()) return
+
         viewModelScope.launch {
             dao.insertCommunityPost(
                 CommunityPostEntity(
-                    category = category,
-                    title = title.trim(),
-                    description = description.trim(),
-                    area = area.trim().ifBlank { selectedCity.value.name },
+                    category = allowedCategory,
+                    title = cleanTitle,
+                    description = cleanDesc,
+                    area = cleanArea,
                     authorLabel = "Local Household Entry",
                     isDemoData = false,
                     participantsCount = 1,
@@ -371,13 +399,13 @@ class MainViewModel internal constructor(
     }
 
     fun sendAssistantQuestion(question: String) {
-        val trimmed = question.trim()
-        if (trimmed.isBlank() || _isAssistantStreaming.value) return
+        val cleanQuestion = InputSanitizer.cleanText(question, 500)
+        if (cleanQuestion.isBlank() || _isAssistantStreaming.value) return
 
         val userMsg = ChatMessage(
             id = UUID.randomUUID().toString(),
             isUser = true,
-            text = trimmed
+            text = cleanQuestion
         )
         val assistantId = UUID.randomUUID().toString()
         val assistantPlaceholder = ChatMessage(
@@ -396,25 +424,19 @@ class MainViewModel internal constructor(
             try {
                 val currentSnapshot = (_airQualityState.value as? AirQualityUiState.Success)?.snapshot
                 val profile = dao.getFamilyProfileOnce()
-                aiRepo.streamAssistantReply(trimmed, snapshotHistory, currentSnapshot, profile)
+                aiRepo.streamAssistantReply(cleanQuestion, snapshotHistory, currentSnapshot, profile)
                     .collect { partial ->
                         _chatMessages.value = _chatMessages.value.map { msg ->
                             if (msg.id == assistantId) msg.copy(text = partial) else msg
                         }
                     }
-            } catch (e: TimeoutCancellationException) {
-                _chatMessages.value = _chatMessages.value.map { msg ->
-                    if (msg.id == assistantId) {
-                        msg.copy(text = "Assistant response timed out after 60 seconds. Please retry.")
-                    } else msg
-                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                Log.w(TAG, "Assistant stream failed (${e.javaClass.simpleName}).")
+                val safeMessage = ErrorMessageMapper.toUserMessage(e, Context.ASSISTANT_CHAT)
                 _chatMessages.value = _chatMessages.value.map { msg ->
-                    if (msg.id == assistantId) {
-                        msg.copy(text = "Error from Gemini AI: ${e.localizedMessage ?: "Unknown error"}")
-                    } else msg
+                    if (msg.id == assistantId) msg.copy(text = safeMessage) else msg
                 }
             } finally {
                 _isAssistantStreaming.value = false
@@ -428,4 +450,10 @@ class MainViewModel internal constructor(
         text = "Hello! I am AirCare Assistant, powered by Gemini via Firebase AI Logic. Ask me about protecting your family from winter smog, outdoor exercise safety, indoor PM2.5 reduction, or sustainable commuting.",
         isSamplePreview = false
     )
+
+    companion object {
+        private const val TAG = "AirCareViewModel"
+        private const val ALERT_COOLDOWN_MS = 30 * 60 * 1000L
+        private val ALLOWED_POST_CATEGORIES = setOf("INITIATIVE", "CARPOOL", "TREE_CARE", "WASTE_REPORT")
+    }
 }

@@ -308,4 +308,201 @@ class AirCareUiComposeTest {
         composeRule.onNodeWithTag("assistant_clear_button").performClick()
         assertTrue(cleared)
     }
+
+    @Test
+    fun `monitor screen renders US and CPCB AQI and opens alert settings`() {
+        var alertOpened = false
+        val snapshot = AirQualitySnapshot(
+            location = LocationCity.HYDERABAD,
+            usAqi = 175,
+            severity = AqiSeverity.UNHEALTHY,
+            indianCpcb = IndianCpcbResult.Available(
+                aqi = 205,
+                category = "Poor",
+                dominantPollutant = "PM2.5 (24h)",
+                subIndices = mapOf("PM2.5 (24h)" to 205, "PM10 (24h)" to 140),
+                averagingNote = "24h window"
+            ),
+            current = PollutantMetrics(80.0, 120.0, 45.0, 1100.0, 52.0, 14.0),
+            hourlySeries = emptyList(),
+            currentHourIndex = 0,
+            lastUpdatedIso = "2026-11-17T08:00",
+            sourceLabel = "Open-Meteo"
+        )
+
+        composeRule.setContent {
+            AirCareTheme {
+                com.example.ui.screens.MonitorScreen(
+                    city = LocationCity.HYDERABAD,
+                    airQualityState = AirQualityUiState.Success(snapshot),
+                    alertSettings = com.example.data.local.UserAlertSettings(alertsEnabled = true, aqiThreshold = 151),
+                    hasNotificationPermission = true,
+                    onRefresh = {},
+                    onOpenCitySearch = {},
+                    onOpenAlertSettings = { alertOpened = true }
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Deterioration Alerts ON (Threshold: US AQI ≥ 151)").assertIsDisplayed()
+        composeRule.onNodeWithTag("monitor_list").performScrollToNode(hasText("205 — Poor"))
+        composeRule.onNodeWithText("205 — Poor").assertIsDisplayed()
+        composeRule.onNodeWithText("PM2.5 (24h): 205").assertIsDisplayed()
+        composeRule.onNodeWithTag("monitor_list").performScrollToNode(hasText("Configure"))
+        composeRule.onNodeWithText("Configure").performClick()
+        assertTrue(alertOpened)
+    }
+
+    @Test
+    fun `alternatives screen shows high AQI advisory filters categories and navigates to impact calculator`() {
+        var openedImpact = false
+        val snapshot = AirQualitySnapshot(
+            location = LocationCity.HYDERABAD,
+            usAqi = 180,
+            severity = AqiSeverity.UNHEALTHY,
+            indianCpcb = IndianCpcbResult.Unavailable("Test"),
+            current = PollutantMetrics(70.0, 110.0, 40.0, 900.0, 45.0, 12.0),
+            hourlySeries = emptyList(),
+            currentHourIndex = 0,
+            lastUpdatedIso = "2026-11-17T08:00",
+            sourceLabel = "Open-Meteo"
+        )
+
+        composeRule.setContent {
+            AirCareTheme {
+                com.example.ui.screens.AlternativesScreen(
+                    airQualityState = AirQualityUiState.Success(snapshot),
+                    onOpenImpactCalculator = { openedImpact = true }
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Current Hyderabad US AQI (180): High pollution — choose enclosed metro, bus, or carpool instead of cycling.").assertIsDisplayed()
+        composeRule.onNodeWithTag("alternatives_chip_Active Mobility").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("alternatives_list").performScrollToNode(hasText("Walking & Cycling (When AQI Permits)"))
+        composeRule.onNodeWithText("Walking & Cycling (When AQI Permits)").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("alternatives_list").performScrollToNode(hasTestTag("alternatives_impact_cta"))
+        composeRule.onNodeWithTag("alternatives_impact_cta").performClick()
+        assertTrue(openedImpact)
+    }
+
+    @Test
+    fun `impact calculator screen recalculates CO2 savings when mode chips change`() {
+        val stateHolder = androidx.compose.runtime.mutableStateOf(com.example.ui.ImpactFormState())
+        composeRule.setContent {
+            AirCareTheme {
+                com.example.ui.screens.ImpactCalculatorScreen(
+                    impactState = stateHolder.value,
+                    onUpdateParameters = { km, days, base, alt ->
+                        stateHolder.value = com.example.ui.ImpactFormState(
+                            roundTripKm = km,
+                            commuteDaysPerMonth = days,
+                            baselineMode = base,
+                            alternativeMode = alt,
+                            calculation = com.example.domain.model.ImpactCalculator.calculate(km, days, base, alt)
+                        )
+                    }
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Default 18km * 22d * (0.171 - 0.035) = 2.45 daily, 53.9 monthly
+        composeRule.onNodeWithTag("impact_list").performScrollToNode(hasTestTag("daily_avoided_card"))
+        composeRule.onNodeWithText("2.45 kg").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("impact_list").performScrollToNode(hasText("Cycling / Walking"))
+        composeRule.onNodeWithText("Cycling / Walking").performClick()
+        composeRule.waitForIdle()
+
+        // Switching to Cycling / Walking (0.0): 18 * 0.171 = 3.08 daily
+        composeRule.onNodeWithTag("impact_list").performScrollToNode(hasTestTag("daily_avoided_card"))
+        composeRule.onNodeWithText("3.08 kg").assertIsDisplayed()
+    }
+
+    @Test
+    fun `city search sheet and alert dialog support preset selection toggleable switch and save`() {
+        var selectedCity: LocationCity? = null
+        composeRule.setContent {
+            AirCareTheme {
+                com.example.ui.components.CitySearchBottomSheet(
+                    currentCity = LocationCity.HYDERABAD,
+                    searchState = com.example.ui.CitySearchState.Idle,
+                    onSearchQuery = {},
+                    onSelectCity = { selectedCity = it },
+                    onDismiss = {}
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("preset_city_New Delhi").performClick()
+        assertEquals("New Delhi", selectedCity?.name)
+    }
+
+    @Test
+    fun `alert settings dialog toggles accessible switch row and saves updated state`() {
+        var savedEnabled = false
+        var savedThreshold = 0
+        composeRule.setContent {
+            AirCareTheme {
+                com.example.ui.components.AlertSettingsDialog(
+                    settings = com.example.data.local.UserAlertSettings(alertsEnabled = false, aqiThreshold = 151),
+                    hasPermission = true,
+                    onRequestPermission = {},
+                    onSave = { enabled, threshold ->
+                        savedEnabled = enabled
+                        savedThreshold = threshold
+                    },
+                    onDismiss = {}
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("alert_enable_switch").performClick()
+        composeRule.onNodeWithTag("save_alert_settings_button").performClick()
+        assertTrue(savedEnabled)
+        assertEquals(151, savedThreshold)
+    }
+
+    @Test
+    fun `dark theme renders dashboard cleanly without missing tokens`() {
+        val snapshot = AirQualitySnapshot(
+            location = LocationCity.HYDERABAD,
+            usAqi = 85,
+            severity = AqiSeverity.MODERATE,
+            indianCpcb = IndianCpcbResult.Unavailable("Insufficient hours"),
+            current = PollutantMetrics(28.0, 50.0, 20.0, 500.0, 35.0, 8.0),
+            hourlySeries = emptyList(),
+            currentHourIndex = 0,
+            lastUpdatedIso = "2026-11-17T10:00",
+            sourceLabel = "Open-Meteo"
+        )
+        composeRule.setContent {
+            AirCareTheme(darkTheme = true) {
+                DashboardScreen(
+                    city = LocationCity.HYDERABAD,
+                    airQualityState = AirQualityUiState.Success(snapshot),
+                    insightState = DashboardInsightUiState.Error("Offline"),
+                    alertBannerStatus = null,
+                    onRefresh = {},
+                    onRetryInsight = {},
+                    onOpenCitySearch = {},
+                    onOpenAlertSettings = {},
+                    onNavigate = {}
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("dashboard_list").performScrollToNode(hasText("Recommended Health Precautions"))
+        composeRule.onNodeWithText("Recommended Health Precautions").assertIsDisplayed()
+        composeRule.onNodeWithTag("dashboard_list").performScrollToNode(hasTestTag("dashboard_retry_insight_button"))
+        composeRule.onNodeWithTag("dashboard_retry_insight_button").assertIsDisplayed()
+    }
 }

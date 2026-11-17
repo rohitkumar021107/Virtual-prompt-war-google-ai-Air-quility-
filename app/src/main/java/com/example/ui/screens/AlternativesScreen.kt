@@ -63,7 +63,8 @@ fun AlternativesScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = 960.dp),
+            .widthIn(max = 960.dp)
+            .testTag("alternatives_list"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -84,7 +85,10 @@ fun AlternativesScreen(
 
         // Live Active Mobility Suitability Card
         item {
+            val bannerTextColor = liveSnapshot?.severity?.onContainerColor
+                ?: MaterialTheme.colorScheme.onSecondaryContainer
             Surface(
+                modifier = Modifier.semantics(mergeDescendants = true) {},
                 shape = RoundedCornerShape(16.dp),
                 color = liveSnapshot?.severity?.containerColor ?: MaterialTheme.colorScheme.secondaryContainer
             ) {
@@ -110,9 +114,14 @@ fun AlternativesScreen(
                         }
                         Text(
                             text = "Active Travel Condition Check",
-                            style = MaterialTheme.typography.titleSmall
+                            style = MaterialTheme.typography.titleSmall,
+                            color = bannerTextColor
                         )
-                        Text(text = suitability, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = suitability,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = bannerTextColor
+                        )
                     }
                 }
             }
@@ -127,7 +136,8 @@ fun AlternativesScreen(
                     FilterChip(
                         selected = selectedCategory == cat,
                         onClick = { selectedCategory = cat },
-                        label = { Text(cat) }
+                        label = { Text(cat) },
+                        modifier = Modifier.testTag("alternatives_chip_$cat")
                     )
                 }
             }

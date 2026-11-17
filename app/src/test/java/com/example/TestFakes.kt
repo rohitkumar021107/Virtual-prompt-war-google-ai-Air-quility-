@@ -26,7 +26,8 @@ import java.io.IOException
 internal class FakeOpenMeteoAirQualityApi(
     var responseFactory: (Double, Double) -> AirQualityResponseDto = { lat, lon ->
         defaultAirQualityResponse(lat, lon)
-    }
+    },
+    var suspendResponseFactory: (suspend (Double, Double) -> AirQualityResponseDto)? = null
 ) : OpenMeteoAirQualityApi {
     var callCount = 0
 
@@ -40,7 +41,8 @@ internal class FakeOpenMeteoAirQualityApi(
         forecastDays: Int
     ): AirQualityResponseDto {
         callCount++
-        return responseFactory(latitude, longitude)
+        return suspendResponseFactory?.invoke(latitude, longitude)
+            ?: responseFactory(latitude, longitude)
     }
 
     companion object {

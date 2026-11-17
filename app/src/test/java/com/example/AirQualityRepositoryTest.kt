@@ -96,4 +96,41 @@ class AirQualityRepositoryTest {
         val err = repo.searchCities("Mumbai")
         assertTrue(err.isFailure)
     }
+
+    @Test
+    fun `fetchAirQuality rejects out-of-range or NaN coordinates without calling API`() = runBlocking {
+        val aqApi = FakeOpenMeteoAirQualityApi()
+        val repo = AirQualityRepository(aqApi, FakeOpenMeteoGeocodingApi())
+
+        val badLat = LocationCity("BadLat", "", "", 95.0, 78.0)
+        val nanLon = LocationCity("NaNLon", "", "", 17.0, Double.NaN)
+
+        assertTrue(repo.fetchAirQuality(badLat).isFailure)
+        assertTrue(repo.fetchAirQuality(nanLon).isFailure)
+        assertEquals(0, aqApi.callCount)
+    }
+
+    @Test
+    fun `searchCities strips control chars bounds length and drops invalid coordinate DTOs`() = runBlocking {
+        var capturedQuery = ""
+        val geoApi = FakeOpenMeteoGeocodingApi { q ->
+            capturedQuery = q
+            GeocodingResponseDto(
+                results = listOf(
+                    com.example.data.remote.GeocodingCityDto(1L, "", 17.0, 78.0, "India", null, null),
+                    com.example.data.remote.GeocodingCityDto(2L, "BadCoord", 120.0, 78.0, "India", null, null),
+                    com.example.data.remote.GeocodingCityDto(3L, "Hyderabad", 17.38, 78.48, "India", "Telangana", "Asia/Kolkata")
+                )
+            )
+        }
+        val repo = AirQualityRepository(FakeOpenMeteoAirQualityApi(), geoApi)
+
+        val longDirty = "\u0000Hyder\u0007abad " + "x".repeat(120)
+        val result = repo.searchCities(longDirty).getOrThrow()
+
+        assertFalse(capturedQuery.contains('\u0000'))
+        assertTrue(capturedQuery.length <= 80)
+        assertEquals(1, result.size)
+        assertEquals("Hyderabad", result.first().name)
+    }
 }

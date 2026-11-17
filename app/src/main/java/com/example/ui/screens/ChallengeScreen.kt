@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -37,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -152,6 +154,9 @@ fun ChallengeScreen(
                             .fillMaxWidth()
                             .height(10.dp)
                             .clip(RoundedCornerShape(50))
+                            .semantics {
+                                contentDescription = "Weekly challenge progress: $scorePercent percent, $completedCount of 7 days completed"
+                            }
                     )
 
                     Text(
@@ -225,14 +230,20 @@ fun ChallengeScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
+                        .toggleable(
+                            value = day.isCompleted,
+                            role = Role.Checkbox,
+                            onValueChange = { onToggleDay(day) }
+                        )
+                        .testTag("challenge_checkbox_${day.dayNumber}")
                         .padding(14.dp),
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Checkbox(
                         checked = day.isCompleted,
-                        onCheckedChange = { onToggleDay(day) },
-                        modifier = Modifier.testTag("challenge_checkbox_${day.dayNumber}")
+                        onCheckedChange = null
                     )
                     Column(
                         modifier = Modifier.weight(1f),

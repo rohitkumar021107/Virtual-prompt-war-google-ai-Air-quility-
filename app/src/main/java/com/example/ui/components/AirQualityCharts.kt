@@ -50,7 +50,7 @@ fun HourlyAqiTrendChart(
         }
     }
 
-    val validValues = sliced.mapNotNull { it.usAqi }
+    val validValues = remember(sliced) { sliced.mapNotNull { it.usAqi } }
     if (sliced.size < 2 || validValues.isEmpty()) {
         Surface(
             modifier = modifier.fillMaxWidth(),
@@ -67,17 +67,18 @@ fun HourlyAqiTrendChart(
         return
     }
 
-    val minVal = (validValues.minOrNull() ?: 0).coerceAtLeast(0)
-    val maxVal = ((validValues.maxOrNull() ?: 100) + 15).coerceAtLeast(minVal + 20)
-    val rawMin = validValues.minOrNull() ?: 0
-    val rawMax = validValues.maxOrNull() ?: 0
+    val lowVal = validValues.minOrNull() ?: 0
+    val peakVal = validValues.maxOrNull() ?: 0
+    val minVal = lowVal.coerceAtLeast(0)
+    val maxVal = (peakVal + 15).coerceAtLeast(minVal + 20)
     val surfaceLine = MaterialTheme.colorScheme.outline
+    val dotOutline = MaterialTheme.colorScheme.surface
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .semantics {
-                contentDescription = "24-hour US AQI trend and forecast chart ranging from $rawMin to $rawMax."
+            .semantics(mergeDescendants = true) {
+                contentDescription = "24-hour US AQI trend and forecast chart ranging from $lowVal to $peakVal."
             }
     ) {
         Row(
@@ -90,7 +91,7 @@ fun HourlyAqiTrendChart(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Observed/Forecast: $rawMin–$rawMax",
+                text = "Min $lowVal • Peak $peakVal",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -117,10 +118,11 @@ fun HourlyAqiTrendChart(
                 )
             }
 
+            val span = (maxVal - minVal).toFloat().coerceAtLeast(1f)
             val coords = sliced.mapIndexedNotNull { idx, pt ->
                 val aqi = pt.usAqi ?: return@mapIndexedNotNull null
                 val x = if (sliced.size > 1) (idx.toFloat() / (sliced.size - 1)) * w else w / 2f
-                val norm = ((aqi - minVal).toFloat() / (maxVal - minVal).toFloat()).coerceIn(0f, 1f)
+                val norm = ((aqi - minVal).toFloat() / span).coerceIn(0f, 1f)
                 val y = padTop + chartH * (1f - norm)
                 Offset(x, y)
             }
@@ -153,7 +155,7 @@ fun HourlyAqiTrendChart(
 
                 coords.forEachIndexed { idx, pt ->
                     if (idx % 4 == 0 || idx == coords.lastIndex) {
-                        drawCircle(color = Color.White, radius = 6f, center = pt)
+                        drawCircle(color = dotOutline, radius = 6f, center = pt)
                         drawCircle(color = accentColor, radius = 4f, center = pt)
                     }
                 }
@@ -186,25 +188,31 @@ fun Co2ComparisonBarChart(
     val maxKg = (comparisons.maxOfOrNull { it.monthlyKgCo2 } ?: 1.0).coerceAtLeast(1.0)
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
+    val baselineColor = MaterialTheme.colorScheme.error
+    val zeroEmissionColor = MaterialTheme.colorScheme.tertiary
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics {
-                contentDescription = "Monthly CO2 emissions comparison chart across ${comparisons.size} transport modes."
-            },
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         comparisons.forEachIndexed { idx, item ->
             val ratio = (item.monthlyKgCo2 / maxKg).toFloat().coerceIn(0f, 1f)
             val barColor = when {
-                idx == 0 -> Color(0xFFDC2626)
-                item.monthlyKgCo2 == 0.0 -> Color(0xFF16A34A)
+                idx == 0 -> baselineColor
+                item.monthlyKgCo2 == 0.0 -> zeroEmissionColor
                 idx % 2 == 0 -> primary
                 else -> secondary
             }
+            val savedNote = if (idx > 0 && item.savedVsBaselineKg > 0.0) {
+                " (saves ${String.format(Locale.US, "%.1f", item.savedVsBaselineKg)} kg)"
+            } else ""
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(
+                modifier = Modifier.semantics(mergeDescendants = true) {
+                    contentDescription = "${item.modeLabel}: ${String.format(Locale.US, "%.1f", item.monthlyKgCo2)} kilograms CO2e per month$savedNote"
+                },
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -219,7 +227,7 @@ fun Co2ComparisonBarChart(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "${String.format(Locale.US, "%.1f", item.monthlyKgCo2)} kg CO₂e/mo",
+                        text = "${String.format(Locale.US, "%.1f", item.monthlyKgCo2)} kg/mo$savedNote",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = barColor

@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -48,10 +47,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.example.data.local.CommunityPostEntity
 import com.example.domain.model.LocationCity
 
@@ -67,6 +69,7 @@ fun CommunityScreen(
     var selectedFilter by remember { mutableStateOf("ALL") }
     var showCreateDialog by remember { mutableStateOf(false) }
     var dialogDefaultCategory by remember { mutableStateOf("CARPOOL") }
+    var portalNotice by remember { mutableStateOf<String?>(null) }
 
     val filteredPosts = remember(posts, selectedFilter) {
         if (selectedFilter == "ALL") posts
@@ -239,13 +242,29 @@ fun CommunityScreen(
                         onClick = {
                             val intent = Intent(
                                 Intent.ACTION_VIEW,
-                                Uri.parse("https://cpcb.nic.in/")
+                                "https://cpcb.nic.in/".toUri()
                             )
-                            runCatching { context.startActivity(intent) }
+                            val launched = runCatching {
+                                if (intent.resolveActivity(context.packageManager) != null) {
+                                    context.startActivity(intent)
+                                    true
+                                } else {
+                                    false
+                                }
+                            }.getOrDefault(false)
+                            portalNotice = if (launched) null else "No browser app found to open cpcb.nic.in on this device."
                         },
                         modifier = Modifier.defaultMinSize(minHeight = 48.dp)
                     ) {
                         Text("Open CPCB Official Portal")
+                    }
+                    if (portalNotice != null) {
+                        Text(
+                            text = portalNotice!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                        )
                     }
                 }
             }
@@ -378,7 +397,7 @@ private fun CreateCommunityPostDialog(
                 }
                 OutlinedTextField(
                     value = title,
-                    onValueChange = { title = it },
+                    onValueChange = { title = it.take(100) },
                     label = { Text("Title") },
                     singleLine = true,
                     modifier = Modifier
@@ -387,7 +406,7 @@ private fun CreateCommunityPostDialog(
                 )
                 OutlinedTextField(
                     value = area,
-                    onValueChange = { area = it },
+                    onValueChange = { area = it.take(80) },
                     label = { Text("Neighborhood / City") },
                     singleLine = true,
                     modifier = Modifier
@@ -396,7 +415,7 @@ private fun CreateCommunityPostDialog(
                 )
                 OutlinedTextField(
                     value = description,
-                    onValueChange = { description = it },
+                    onValueChange = { description = it.take(400) },
                     label = { Text("Details / Reporting Notes") },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -407,7 +426,9 @@ private fun CreateCommunityPostDialog(
                         text = errorText!!,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.testTag("community_dialog_error")
+                        modifier = Modifier
+                            .semantics { liveRegion = LiveRegionMode.Polite }
+                            .testTag("community_dialog_error")
                     )
                 }
             }

@@ -46,12 +46,20 @@ private val DarkColorScheme = darkColorScheme(
     onSecondaryContainer = Color(0xFFE0F2FE),
     tertiary = Color(0xFF6EE7B7),
     onTertiary = Color(0xFF003824),
+    tertiaryContainer = Color(0xFF064E3B),
+    onTertiaryContainer = Color(0xFFD1FAE5),
+    error = Color(0xFFFCA5A5),
+    onError = Color(0xFF450A0A),
+    errorContainer = Color(0xFF7F1D1D),
+    onErrorContainer = Color(0xFFFEE2E2),
     background = DarkBackground,
     onBackground = Color(0xFFE6F4F1),
     surface = DarkSurface,
     onSurface = Color(0xFFE6F4F1),
     surfaceVariant = DarkSurfaceVariant,
     onSurfaceVariant = Color(0xFFA9C5C1),
+    surfaceContainerLow = Color(0xFF0F201E),
+    surfaceContainer = DarkSurfaceVariant,
     outline = Color(0xFF2B4D49)
 )
 

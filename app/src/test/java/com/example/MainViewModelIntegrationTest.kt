@@ -204,7 +204,9 @@ class MainViewModelIntegrationTest {
         aiRepo.shouldFailAssistant = true
         vm.sendAssistantQuestion("Any indoor tips?")
         advanceUntilIdle()
-        assertTrue(vm.chatMessages.value.last().text.contains("Error from Gemini AI"))
+        val assistantErr = vm.chatMessages.value.last().text
+        assertTrue(assistantErr.contains("could not reach Gemini AI", ignoreCase = true))
+        assertFalse(assistantErr.contains("Streaming failed"))
 
         vm.clearAssistantChat()
         assertEquals(1, vm.chatMessages.value.size)
@@ -280,5 +282,87 @@ class MainViewModelIntegrationTest {
         val toggled = db.airCareDao().observeCommunityPosts().first().first { it.id == created.id }
         assertFalse(toggled.isJoined)
         assertEquals(0, toggled.participantsCount)
+    }
+
+    @Test
+    fun `retryDashboardInsight recovers after AI failure and never leaks raw exception strings`() = runTest(testDispatcher) {
+        val rawLeak = "https://secret-internal-host/token=ABC_LEAK"
+        aqApi.responseFactory = { _, _ -> throw IOException(rawLeak) }
+        aiRepo.shouldFailDashboard = true
+        aiRepo.shouldFailPlan = true
+        aiRepo.shouldFailAssistant = true
+
+        val vm = createViewModel()
+        vm.initialize()
+        advanceUntilIdle()
+
+        val aqErr = vm.airQualityState.value as AirQualityUiState.Error
+        assertFalse(aqErr.message.contains("ABC_LEAK"))
+        val insightErr = vm.dashboardInsightState.value as DashboardInsightUiState.Error
+        assertFalse(insightErr.message.contains("ABC_LEAK"))
+
+        // Retry insight succeeds once AI recovers
+        aiRepo.shouldFailDashboard = false
+        vm.retryDashboardInsight()
+        advanceUntilIdle()
+        assertTrue(vm.dashboardInsightState.value is DashboardInsightUiState.Success)
+
+        // Family plan error is also sanitized
+        vm.saveAndGenerateFamilyPlan(FamilyProfileEntity())
+        advanceUntilIdle()
+        val planErr = vm.familyPlanState.value as FamilyPlanUiState.Error
+        assertFalse(planErr.message.contains("Plan generation failed"))
+
+        // Assistant error is sanitized
+        vm.sendAssistantQuestion("Test question")
+        advanceUntilIdle()
+        assertFalse(vm.chatMessages.value.last().text.contains("Streaming failed"))
+    }
+
+    @Test
+    fun `notification cooldown suppresses duplicate alerts across back-to-back refreshes`() = runTest(testDispatcher) {
+        prefs.updateAlertSettings(enabled = true, threshold = 101)
+        val vm = createViewModel()
+        vm.initialize()
+        advanceUntilIdle()
+
+        assertEquals(1, notifier.notifiedSnapshots.size)
+
+        // Second refresh within 30-min cooldown must not spam another notification
+        vm.refreshAirQuality()
+        advanceUntilIdle()
+        assertEquals(1, notifier.notifiedSnapshots.size)
+    }
+
+    @Test
+    fun `rapid refreshAirQuality calls cancel superseded fetch and use latest result`() = runTest(testDispatcher) {
+        var callNumber = 0
+        aqApi.suspendResponseFactory = { lat, lon ->
+            callNumber++
+            val currentCall = callNumber
+            if (currentCall == 1) {
+                kotlinx.coroutines.delay(500)
+            }
+            FakeOpenMeteoAirQualityApi.defaultAirQualityResponse(lat, lon).copy(
+                current = com.example.data.remote.CurrentAirDto(
+                    time = "2026-11-17T23:00",
+                    usAqi = if (currentCall == 1) 45 else 210,
+                    pm25 = 75.0,
+                    pm10 = 112.0,
+                    no2 = 42.0,
+                    co = 1000.0,
+                    o3 = 52.0,
+                    so2 = 16.0
+                )
+            )
+        }
+        val vm = createViewModel()
+        vm.refreshAirQuality(LocationCity.HYDERABAD)
+        testScheduler.runCurrent() // Enter call 1 and suspend inside delay(500)
+        vm.refreshAirQuality(LocationCity.HYDERABAD) // Cancels call 1 and starts call 2
+        advanceUntilIdle()
+
+        val state = vm.airQualityState.value as AirQualityUiState.Success
+        assertEquals(210, state.snapshot.usAqi)
     }
 }

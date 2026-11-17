@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -14,7 +15,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
@@ -32,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -48,7 +51,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.example.data.local.UserAlertSettings
 import com.example.domain.model.LocationCity
@@ -66,6 +77,7 @@ fun CitySearchBottomSheet(
     onDismiss: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -83,7 +95,8 @@ fun CitySearchBottomSheet(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Select Monitoring Location",
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.semantics { heading() }
                     )
                     Text(
                         text = "Current: ${currentCity.displayName}",
@@ -102,8 +115,9 @@ fun CitySearchBottomSheet(
             OutlinedTextField(
                 value = query,
                 onValueChange = {
-                    query = it
-                    onSearchQuery(it)
+                    val bounded = it.take(80)
+                    query = bounded
+                    onSearchQuery(bounded)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -111,7 +125,12 @@ fun CitySearchBottomSheet(
                 label = { Text("Search any city (Open-Meteo Geocoding)") },
                 placeholder = { Text("e.g., Hyderabad, Delhi, Pune, London") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    onSearchQuery(query)
+                    keyboardController?.hide()
+                })
             )
 
             Text(
@@ -130,6 +149,7 @@ fun CitySearchBottomSheet(
                             onSelectCity(preset)
                             onDismiss()
                         },
+                        modifier = Modifier.testTag("preset_city_${preset.name}"),
                         label = {
                             Text(if (preset.isDefaultDemo) "${preset.name} (Demo)" else preset.name)
                         },
@@ -162,7 +182,12 @@ fun CitySearchBottomSheet(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .semantics { contentDescription = "Searching matching cities" },
+                            strokeWidth = 2.dp
+                        )
                         Spacer(Modifier.width(10.dp))
                         Text("Searching cities...", style = MaterialTheme.typography.bodyMedium)
                     }
@@ -171,7 +196,8 @@ fun CitySearchBottomSheet(
                     Text(
                         text = searchState.message,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
                     )
                 }
                 is CitySearchState.Results -> {
@@ -192,7 +218,7 @@ fun CitySearchBottomSheet(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .minimumInteractiveComponentSize()
+                                        .defaultMinSize(minHeight = 48.dp)
                                         .clickable {
                                             onSelectCity(city)
                                             onDismiss()
@@ -235,12 +261,18 @@ fun AlertSettingsDialog(
     settings: UserAlertSettings,
     hasPermission: Boolean,
     onRequestPermission: () -> Unit,
-    onTestAlert: () -> Unit,
     onSave: (Boolean, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     var enabled by remember(settings) { mutableStateOf(settings.alertsEnabled) }
     var threshold by remember(settings) { mutableFloatStateOf(settings.aqiThreshold.toFloat()) }
+
+    val onToggleEnabled: (Boolean) -> Unit = { checked ->
+        enabled = checked
+        if (checked && !hasPermission) {
+            onRequestPermission()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -249,7 +281,15 @@ fun AlertSettingsDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
+                        .toggleable(
+                            value = enabled,
+                            role = Role.Switch,
+                            onValueChange = onToggleEnabled
+                        )
+                        .testTag("alert_enable_switch"),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -259,13 +299,7 @@ fun AlertSettingsDialog(
                     )
                     Switch(
                         checked = enabled,
-                        onCheckedChange = { checked ->
-                            enabled = checked
-                            if (checked && !hasPermission) {
-                                onRequestPermission()
-                            }
-                        },
-                        modifier = Modifier.testTag("alert_enable_switch")
+                        onCheckedChange = null
                     )
                 }
 
@@ -283,22 +317,21 @@ fun AlertSettingsDialog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
-                            TextButton(onClick = onRequestPermission) {
+                            TextButton(
+                                onClick = onRequestPermission,
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 48.dp)
+                                    .testTag("grant_notification_permission_button")
+                            ) {
                                 Text("Grant Notification Permission")
                             }
                         }
                     }
-                } else {
-                    OutlinedButton(
-                        onClick = onTestAlert,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Send Test Alert Notification")
-                    }
                 }
 
+                val roundedThreshold = threshold.roundToInt()
                 Text(
-                    text = "Alert Threshold: US AQI ≥ ${threshold.roundToInt()}",
+                    text = "Alert Threshold: US AQI ≥ $roundedThreshold",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -306,7 +339,10 @@ fun AlertSettingsDialog(
                     value = threshold,
                     onValueChange = { threshold = it },
                     valueRange = 51f..301f,
-                    steps = 4
+                    steps = 4,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Alert threshold slider set to US AQI $roundedThreshold"
+                    }
                 )
                 Text(
                     text = "101 = Sensitive Groups • 151 = Unhealthy • 201 = Very Unhealthy • 301 = Hazardous",
@@ -321,13 +357,18 @@ fun AlertSettingsDialog(
                     onSave(enabled, threshold.roundToInt())
                     onDismiss()
                 },
-                modifier = Modifier.testTag("save_alert_settings_button")
+                modifier = Modifier
+                    .defaultMinSize(minHeight = 48.dp)
+                    .testTag("save_alert_settings_button")
             ) {
                 Text("Save")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+            ) {
                 Text("Cancel")
             }
         }

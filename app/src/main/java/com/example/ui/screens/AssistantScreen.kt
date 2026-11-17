@@ -197,7 +197,7 @@ fun AssistantScreen(
         ) {
             OutlinedTextField(
                 value = inputText,
-                onValueChange = { inputText = it },
+                onValueChange = { inputText = it.take(500) },
                 modifier = Modifier
                     .weight(1f)
                     .testTag("assistant_input"),
@@ -215,7 +215,9 @@ fun AssistantScreen(
             ) {
                 if (isStreaming) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier
+                            .size(20.dp)
+                            .semantics { contentDescription = "Generating AI assistant response" },
                         strokeWidth = 2.dp,
                         color = MaterialTheme.colorScheme.onPrimary
                     )

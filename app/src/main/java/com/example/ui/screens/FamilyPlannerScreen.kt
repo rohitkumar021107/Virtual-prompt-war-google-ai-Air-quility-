@@ -43,7 +43,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -86,7 +89,8 @@ fun FamilyPlannerScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = 960.dp),
+            .widthIn(max = 960.dp)
+            .testTag("family_list"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -134,7 +138,7 @@ fun FamilyPlannerScreen(
 
                     OutlinedTextField(
                         value = locationText,
-                        onValueChange = { locationText = it },
+                        onValueChange = { locationText = it.take(80) },
                         label = { Text("Location") },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -194,7 +198,7 @@ fun FamilyPlannerScreen(
 
                     OutlinedTextField(
                         value = concerns,
-                        onValueChange = { concerns = it },
+                        onValueChange = { concerns = it.take(200) },
                         label = { Text("Main Pollution Concerns") },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -204,7 +208,9 @@ fun FamilyPlannerScreen(
                             text = validationError!!,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.testTag("family_validation_error")
+                            modifier = Modifier
+                                .semantics { liveRegion = LiveRegionMode.Polite }
+                                .testTag("family_validation_error")
                         )
                     }
 
@@ -275,7 +281,11 @@ fun FamilyPlannerScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .semantics { contentDescription = "Generating personalized family protection plan" }
+                        )
                         Spacer(Modifier.width(10.dp))
                         Text("Building personalized household protection plan...")
                     }
@@ -284,7 +294,13 @@ fun FamilyPlannerScreen(
 
             is FamilyPlanUiState.Error -> {
                 item {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { liveRegion = LiveRegionMode.Polite }
+                            .testTag("family_plan_error"),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
                         Text(
                             text = planState.message,
                             modifier = Modifier.padding(16.dp),
