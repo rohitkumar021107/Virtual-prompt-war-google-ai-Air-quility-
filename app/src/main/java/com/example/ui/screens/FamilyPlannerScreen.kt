@@ -270,7 +270,10 @@ fun FamilyPlannerScreen(
             is FamilyPlanUiState.Success -> {
                 val plan = planState.plan
                 item {
-                    SampleAiNoticeBanner(text = plan.notice)
+                    SampleAiNoticeBanner(
+                        text = plan.notice,
+                        isLiveGemini = !plan.isSamplePreview
+                    )
                 }
                 item {
                     ElevatedCard(modifier = Modifier.fillMaxWidth()) {

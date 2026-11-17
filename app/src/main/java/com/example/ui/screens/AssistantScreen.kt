@@ -90,7 +90,10 @@ fun AssistantScreen(
             )
         }
 
-        SampleAiNoticeBanner()
+        SampleAiNoticeBanner(
+            text = "Powered by Gemini (gemini-3.8-flash) via Firebase AI Logic",
+            isLiveGemini = true
+        )
 
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(SUGGESTED_QUESTIONS) { prompt ->

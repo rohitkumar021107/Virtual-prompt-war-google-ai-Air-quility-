@@ -11,7 +11,7 @@ import com.example.data.local.UserAlertSettings
 import com.example.data.local.UserPreferencesRepository
 import com.example.data.repository.AiRepository
 import com.example.data.repository.AirQualityRepository
-import com.example.data.repository.SamplePlaceholderAiRepository
+import com.example.data.repository.FirebaseAiRepository
 import com.example.domain.model.AirQualitySnapshot
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.CommuteMode
@@ -23,6 +23,7 @@ import com.example.domain.model.LocationCity
 import com.example.notifications.AirAlertNotifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +37,13 @@ sealed interface AirQualityUiState {
     data object Loading : AirQualityUiState
     data class Success(val snapshot: AirQualitySnapshot) : AirQualityUiState
     data class Error(val message: String, val lastCity: LocationCity) : AirQualityUiState
+}
+
+sealed interface DashboardInsightUiState {
+    data object Idle : DashboardInsightUiState
+    data object Loading : DashboardInsightUiState
+    data class Success(val insight: DashboardAiInsight) : DashboardInsightUiState
+    data class Error(val message: String) : DashboardInsightUiState
 }
 
 sealed interface CitySearchState {
@@ -68,7 +76,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = database.airCareDao()
     private val prefsRepo = UserPreferencesRepository(application)
     private val airQualityRepo = AirQualityRepository()
-    private val aiRepo: AiRepository = SamplePlaceholderAiRepository()
+    private val aiRepo: AiRepository = FirebaseAiRepository()
     private val notifier = AirAlertNotifier(application)
 
     val selectedCity: StateFlow<LocationCity> = prefsRepo.selectedCity
@@ -95,8 +103,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _airQualityState = MutableStateFlow<AirQualityUiState>(AirQualityUiState.Loading)
     val airQualityState: StateFlow<AirQualityUiState> = _airQualityState.asStateFlow()
 
-    private val _dashboardInsight = MutableStateFlow<DashboardAiInsight?>(null)
-    val dashboardInsight: StateFlow<DashboardAiInsight?> = _dashboardInsight.asStateFlow()
+    private val _dashboardInsightState = MutableStateFlow<DashboardInsightUiState>(DashboardInsightUiState.Idle)
+    val dashboardInsightState: StateFlow<DashboardInsightUiState> = _dashboardInsightState.asStateFlow()
 
     private val _citySearchState = MutableStateFlow<CitySearchState>(CitySearchState.Idle)
     val citySearchState: StateFlow<CitySearchState> = _citySearchState.asStateFlow()
@@ -112,8 +120,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ChatMessage(
                 id = "welcome",
                 isUser = false,
-                text = "Hello! I am AirCare Assistant. Ask me about protecting your family from winter smog, outdoor exercise safety, indoor PM2.5 reduction, or sustainable commuting.\n\n[Sample AI Preview — Live Gemini AI requires Firebase to be enabled]",
-                isSamplePreview = true
+                text = "Hello! I am AirCare Assistant, powered by Gemini via Firebase AI Logic. Ask me about protecting your family from winter smog, outdoor exercise safety, indoor PM2.5 reduction, or sustainable commuting.",
+                isSamplePreview = false
             )
         )
     )
@@ -157,12 +165,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun retryDashboardInsight() {
+        val currentSnapshot = (_airQualityState.value as? AirQualityUiState.Success)?.snapshot
+        generateDashboardInsight(currentSnapshot)
+    }
+
     private fun generateDashboardInsight(snapshot: AirQualitySnapshot?) {
         viewModelScope.launch {
+            _dashboardInsightState.value = DashboardInsightUiState.Loading
             val profile = dao.getFamilyProfileOnce()
-            aiRepo.generateDashboardInsight(snapshot, profile).onSuccess {
-                _dashboardInsight.value = it
-            }
+            aiRepo.generateDashboardInsight(snapshot, profile).fold(
+                onSuccess = { _dashboardInsightState.value = DashboardInsightUiState.Success(it) },
+                onFailure = { err ->
+                    _dashboardInsightState.value = DashboardInsightUiState.Error(
+                        err.localizedMessage ?: "Failed to generate Gemini insight."
+                    )
+                }
+            )
         }
     }
 
@@ -333,8 +352,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val assistantPlaceholder = ChatMessage(
             id = assistantId,
             isUser = false,
-            text = "...",
-            isSamplePreview = true
+            text = "Thinking...",
+            isSamplePreview = false
         )
 
         val snapshotHistory = _chatMessages.value
@@ -352,12 +371,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             if (msg.id == assistantId) msg.copy(text = partial) else msg
                         }
                     }
+            } catch (e: TimeoutCancellationException) {
+                _chatMessages.value = _chatMessages.value.map { msg ->
+                    if (msg.id == assistantId) {
+                        msg.copy(text = "Assistant response timed out after 60 seconds. Please retry.")
+                    } else msg
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _chatMessages.value = _chatMessages.value.map { msg ->
                     if (msg.id == assistantId) {
-                        msg.copy(text = "Unable to generate reply: ${e.localizedMessage ?: "Unknown error"}")
+                        msg.copy(text = "Error from Gemini AI: ${e.localizedMessage ?: "Unknown error"}")
                     } else msg
                 }
             } finally {

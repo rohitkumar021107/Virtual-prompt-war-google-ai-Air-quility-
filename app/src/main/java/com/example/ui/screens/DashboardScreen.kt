@@ -52,10 +52,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.domain.model.AirQualitySnapshot
-import com.example.domain.model.DashboardAiInsight
 import com.example.domain.model.IndianCpcbResult
 import com.example.domain.model.LocationCity
 import com.example.ui.AirQualityUiState
+import com.example.ui.DashboardInsightUiState
 import com.example.ui.components.AqiSeverityBadge
 import com.example.ui.components.HourlyAqiTrendChart
 import com.example.ui.components.SampleAiNoticeBanner
@@ -67,9 +67,10 @@ import java.util.Locale
 fun DashboardScreen(
     city: LocationCity,
     airQualityState: AirQualityUiState,
-    dashboardInsight: DashboardAiInsight?,
+    insightState: DashboardInsightUiState,
     alertBannerStatus: String?,
     onRefresh: () -> Unit,
+    onRetryInsight: () -> Unit,
     onOpenCitySearch: () -> Unit,
     onOpenAlertSettings: () -> Unit,
     onNavigate: (AirCareSection) -> Unit
@@ -309,61 +310,111 @@ fun DashboardScreen(
             }
 
             // AI Personal Assistant Insight Card
-            if (dashboardInsight != null) {
-                item {
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
+            when (insightState) {
+                DashboardInsightUiState.Idle -> Unit
+                DashboardInsightUiState.Loading -> {
+                    item {
+                        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                             Row(
+                                modifier = Modifier.padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Icon(
-                                    Icons.Filled.Shield,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                                 Text(
-                                    text = "AirCare Personal Insight",
-                                    style = MaterialTheme.typography.titleLarge
+                                    text = "Generating Gemini AI air quality insight...",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
                             }
-                            SampleAiNoticeBanner(text = dashboardInsight.notice)
-                            Text(
-                                text = dashboardInsight.headline,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            RoutineRow("Morning", dashboardInsight.morningAdvice)
-                            RoutineRow("Afternoon", dashboardInsight.afternoonAdvice)
-                            RoutineRow("Evening", dashboardInsight.eveningAdvice)
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    }
+                }
+                is DashboardInsightUiState.Error -> {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                Text(
+                                    text = "Gemini Insight Unavailable",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = insightState.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                OutlinedButton(onClick = onRetryInsight) {
+                                    Text("Retry Gemini Insight")
+                                }
+                            }
+                        }
+                    }
+                }
+                is DashboardInsightUiState.Success -> {
+                    val dashboardInsight = insightState.insight
+                    item {
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(
-                                        text = "Why It Matters",
-                                        style = MaterialTheme.typography.labelLarge
+                                    Icon(
+                                        Icons.Filled.Shield,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
-                                        text = dashboardInsight.whyItMatters,
-                                        style = MaterialTheme.typography.bodySmall
+                                        text = "AirCare Personal Insight",
+                                        style = MaterialTheme.typography.titleLarge
                                     )
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        text = dashboardInsight.measuredVsEstimatedNote,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                }
+                                SampleAiNoticeBanner(
+                                    text = dashboardInsight.notice,
+                                    isLiveGemini = !dashboardInsight.isSamplePreview
+                                )
+                                Text(
+                                    text = dashboardInsight.headline,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                RoutineRow("Morning", dashboardInsight.morningAdvice)
+                                RoutineRow("Afternoon", dashboardInsight.afternoonAdvice)
+                                RoutineRow("Evening", dashboardInsight.eveningAdvice)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Why It Matters",
+                                            style = MaterialTheme.typography.labelLarge
+                                        )
+                                        Text(
+                                            text = dashboardInsight.whyItMatters,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = dashboardInsight.measuredVsEstimatedNote,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }

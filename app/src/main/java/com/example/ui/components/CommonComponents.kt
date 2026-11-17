@@ -77,12 +77,13 @@ import kotlin.math.roundToInt
 @Composable
 fun SampleAiNoticeBanner(
     modifier: Modifier = Modifier,
-    text: String = stringResource(R.string.sample_ai_notice)
+    text: String = stringResource(R.string.sample_ai_notice),
+    isLiveGemini: Boolean = true
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        color = if (isLiveGemini) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
         tonalElevation = 1.dp
     ) {
         Row(
@@ -92,14 +93,14 @@ fun SampleAiNoticeBanner(
         ) {
             Icon(
                 imageVector = Icons.Filled.Info,
-                contentDescription = "Sample AI Notice",
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                contentDescription = "AI Status",
+                tint = if (isLiveGemini) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.size(20.dp)
             )
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = if (isLiveGemini) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                 fontWeight = FontWeight.Medium
             )
         }

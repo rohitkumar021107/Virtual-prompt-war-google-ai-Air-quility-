@@ -85,7 +85,7 @@ fun AirCareApp(
 
     val selectedCity by viewModel.selectedCity.collectAsStateWithLifecycle()
     val airQualityState by viewModel.airQualityState.collectAsStateWithLifecycle()
-    val dashboardInsight by viewModel.dashboardInsight.collectAsStateWithLifecycle()
+    val dashboardInsightState by viewModel.dashboardInsightState.collectAsStateWithLifecycle()
     val citySearchState by viewModel.citySearchState.collectAsStateWithLifecycle()
     val familyProfile by viewModel.familyProfile.collectAsStateWithLifecycle()
     val familyPlanState by viewModel.familyPlanState.collectAsStateWithLifecycle()
@@ -305,9 +305,10 @@ fun AirCareApp(
                                 DashboardScreen(
                                     city = selectedCity,
                                     airQualityState = airQualityState,
-                                    dashboardInsight = dashboardInsight,
+                                    insightState = dashboardInsightState,
                                     alertBannerStatus = alertBannerStatus,
                                     onRefresh = { viewModel.refreshAirQuality() },
+                                    onRetryInsight = { viewModel.retryDashboardInsight() },
                                     onOpenCitySearch = { showCitySearchSheet = true },
                                     onOpenAlertSettings = { showAlertDialog = true },
                                     onNavigate = navigateTo
