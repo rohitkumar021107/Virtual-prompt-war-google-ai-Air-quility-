@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.UserAlertSettings
@@ -45,6 +49,8 @@ import com.example.domain.model.IndianCpcbResult
 import com.example.domain.model.LocationCity
 import com.example.ui.AirQualityUiState
 import com.example.ui.components.AqiSeverityBadge
+import com.example.ui.components.AqiSeverityScaleBar
+import com.example.ui.components.HealthEnvironmentalDisclaimer
 import com.example.ui.components.HourlyAqiTrendChart
 import java.util.Locale
 
@@ -73,7 +79,11 @@ fun MonitorScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Air Quality Monitor", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        text = "Air Quality Monitor",
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.semantics { heading() }
+                    )
                     Text(
                         text = city.displayName,
                         style = MaterialTheme.typography.bodyMedium,
@@ -81,12 +91,18 @@ fun MonitorScreen(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onOpenCitySearch) {
+                    OutlinedButton(
+                        onClick = onOpenCitySearch,
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                    ) {
                         Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("City")
                     }
-                    Button(onClick = onRefresh) {
+                    Button(
+                        onClick = onRefresh,
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                    ) {
                         Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Refresh")
@@ -126,7 +142,10 @@ fun MonitorScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    OutlinedButton(onClick = onOpenAlertSettings) {
+                    OutlinedButton(
+                        onClick = onOpenAlertSettings,
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                    ) {
                         Icon(Icons.Filled.NotificationsActive, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Configure")
@@ -189,6 +208,10 @@ fun MonitorScreen(
                                 }
                                 AqiSeverityBadge(severity = snap.severity)
                             }
+                            AqiSeverityScaleBar(
+                                usAqi = snap.usAqi,
+                                severity = snap.severity
+                            )
                             Text(
                                 text = "Source: ${snap.sourceLabel}\nTimestamp: ${snap.lastUpdatedIso} (${snap.location.timezone})",
                                 style = MaterialTheme.typography.bodySmall,
@@ -205,7 +228,11 @@ fun MonitorScreen(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Indian CPCB National AQI (NAQI)", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = "Indian CPCB National AQI (NAQI)",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.semantics { heading() }
+                            )
                             when (val cpcb = snap.indianCpcb) {
                                 is IndianCpcbResult.Available -> {
                                     Text(
@@ -255,7 +282,11 @@ fun MonitorScreen(
                 // Detailed Pollutant Breakdown
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Measured Pollutant Concentrations", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = "Measured Pollutant Concentrations",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.semantics { heading() }
+                        )
                         val rows = listOf(
                             Triple("PM2.5 (Fine Particulate)", snap.current.pm25, "µg/m³ • Primary winter smog hazard"),
                             Triple("PM10 (Coarse Particulate)", snap.current.pm10, "µg/m³ • Road dust & smoke"),
@@ -266,6 +297,10 @@ fun MonitorScreen(
                         )
                         rows.forEach { (name, value, note) ->
                             Surface(
+                                modifier = Modifier.semantics(mergeDescendants = true) {
+                                    val formatted = if (value == null) "unavailable" else String.format(Locale.US, "%.1f", value)
+                                    contentDescription = "$name: $formatted. $note"
+                                },
                                 shape = RoundedCornerShape(14.dp),
                                 color = MaterialTheme.colorScheme.surface,
                                 tonalElevation = 1.dp
@@ -317,7 +352,11 @@ fun MonitorScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("US AQI Alert Categories & Guidance", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = "US AQI Alert Categories & Guidance",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.semantics { heading() }
+                    )
                     AqiSeverity.entries.forEach { tier ->
                         Row(
                             verticalAlignment = Alignment.Top,
@@ -345,6 +384,10 @@ fun MonitorScreen(
                     }
                 }
             }
+        }
+
+        item {
+            HealthEnvironmentalDisclaimer()
         }
     }
 }

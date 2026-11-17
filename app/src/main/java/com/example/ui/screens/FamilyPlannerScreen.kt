@@ -43,6 +43,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -50,7 +52,8 @@ import com.example.R
 import com.example.data.local.FamilyProfileEntity
 import com.example.domain.model.LocationCity
 import com.example.ui.FamilyPlanUiState
-import com.example.ui.components.SampleAiNoticeBanner
+import com.example.ui.components.AiStatusBanner
+import com.example.ui.components.HealthEnvironmentalDisclaimer
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -60,8 +63,8 @@ fun FamilyPlannerScreen(
     planState: FamilyPlanUiState,
     onGeneratePlan: (FamilyProfileEntity) -> Unit
 ) {
-    var locationText by remember(savedProfile.locationName, city.displayName) {
-        mutableStateOf(city.displayName)
+    var locationText by remember(savedProfile.locationName) {
+        mutableStateOf(savedProfile.locationName.ifBlank { city.displayName })
     }
     var membersText by remember(savedProfile) { mutableStateOf(savedProfile.memberCount.toString()) }
     var workingText by remember(savedProfile) { mutableStateOf(savedProfile.workingAdults.toString()) }
@@ -123,15 +126,28 @@ fun FamilyPlannerScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Household Profile", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = "Household Profile",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.semantics { heading() }
+                    )
 
                     OutlinedTextField(
                         value = locationText,
                         onValueChange = { locationText = it },
                         label = { Text("Location") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("family_location_input"),
                         singleLine = true
                     )
+                    if (locationText != city.displayName) {
+                        androidx.compose.material3.TextButton(
+                            onClick = { locationText = city.displayName }
+                        ) {
+                            Text("Use active monitor city (${city.name})")
+                        }
+                    }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         NumberField("Members", membersText, { membersText = it }, Modifier.weight(1f))
@@ -187,7 +203,8 @@ fun FamilyPlannerScreen(
                         Text(
                             text = validationError!!,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.testTag("family_validation_error")
                         )
                     }
 
@@ -200,29 +217,39 @@ fun FamilyPlannerScreen(
                             val outdoor = outdoorWorkersText.toIntOrNull()
                             val km = travelKmText.toIntOrNull()
 
-                            if (locationText.isBlank() || members == null || members < 1 ||
-                                working == null || working < 0 || kids == null || kids < 0 ||
-                                seniors == null || seniors < 0 || outdoor == null || outdoor < 0 ||
-                                km == null || km < 0
-                            ) {
-                                validationError = "Please enter valid non-negative numbers (at least 1 family member) and a city name."
-                            } else {
-                                validationError = null
-                                onGeneratePlan(
-                                    FamilyProfileEntity(
-                                        id = 1,
-                                        locationName = locationText.trim(),
-                                        memberCount = members.coerceIn(1, 30),
-                                        workingAdults = working.coerceIn(0, 20),
-                                        children = kids.coerceIn(0, 20),
-                                        olderAdults = seniors.coerceIn(0, 20),
-                                        outdoorWorkers = outdoor.coerceIn(0, 20),
-                                        dailyTravelKm = km.coerceIn(0, 300),
-                                        transportMethod = transportMethod,
-                                        budgetPreference = budgetPref,
-                                        mainConcerns = concerns.trim().ifBlank { "Winter smog & daily commute" }
+                            when {
+                                locationText.isBlank() -> {
+                                    validationError = "Please enter a location name."
+                                }
+                                members == null || members < 1 || working == null || working < 0 ||
+                                    kids == null || kids < 0 || seniors == null || seniors < 0 ||
+                                    outdoor == null || outdoor < 0 || km == null || km < 0 -> {
+                                    validationError = "Please enter valid non-negative numbers (at least 1 family member)."
+                                }
+                                working + kids + seniors > members -> {
+                                    validationError = "Working adults + children + older adults (${working + kids + seniors}) cannot exceed total members ($members)."
+                                }
+                                outdoor > members -> {
+                                    validationError = "Outdoor workers ($outdoor) cannot exceed total members ($members)."
+                                }
+                                else -> {
+                                    validationError = null
+                                    onGeneratePlan(
+                                        FamilyProfileEntity(
+                                            id = 1,
+                                            locationName = locationText.trim(),
+                                            memberCount = members.coerceIn(1, 30),
+                                            workingAdults = working.coerceIn(0, 20),
+                                            children = kids.coerceIn(0, 20),
+                                            olderAdults = seniors.coerceIn(0, 20),
+                                            outdoorWorkers = outdoor.coerceIn(0, 20),
+                                            dailyTravelKm = km.coerceIn(0, 300),
+                                            transportMethod = transportMethod,
+                                            budgetPreference = budgetPref,
+                                            mainConcerns = concerns.trim().ifBlank { "Winter smog & daily commute" }
+                                        )
                                     )
-                                )
+                                }
                             }
                         },
                         modifier = Modifier
@@ -270,7 +297,7 @@ fun FamilyPlannerScreen(
             is FamilyPlanUiState.Success -> {
                 val plan = planState.plan
                 item {
-                    SampleAiNoticeBanner(
+                    AiStatusBanner(
                         text = plan.notice,
                         isLiveGemini = !plan.isSamplePreview
                     )
@@ -326,6 +353,9 @@ fun FamilyPlannerScreen(
                             Text(text = body, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+                }
+                item {
+                    HealthEnvironmentalDisclaimer()
                 }
             }
         }

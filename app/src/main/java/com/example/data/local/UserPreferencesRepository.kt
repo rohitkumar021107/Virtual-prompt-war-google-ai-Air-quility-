@@ -22,7 +22,15 @@ data class UserAlertSettings(
     val lastNotifiedTimestamp: Long = 0L
 )
 
-class UserPreferencesRepository(private val context: Context) {
+interface UserPreferencesStorage {
+    val selectedCity: Flow<LocationCity>
+    val alertSettings: Flow<UserAlertSettings>
+    suspend fun saveSelectedCity(city: LocationCity)
+    suspend fun updateAlertSettings(enabled: Boolean, threshold: Int)
+    suspend fun markAlertSent(timestamp: Long)
+}
+
+class UserPreferencesRepository(private val context: Context) : UserPreferencesStorage {
     private object Keys {
         val CITY_NAME = stringPreferencesKey("city_name")
         val CITY_REGION = stringPreferencesKey("city_region")
@@ -37,7 +45,7 @@ class UserPreferencesRepository(private val context: Context) {
         val LAST_NOTIFIED_AT = longPreferencesKey("last_notified_at")
     }
 
-    val selectedCity: Flow<LocationCity> = context.dataStore.data.map { prefs ->
+    override val selectedCity: Flow<LocationCity> = context.dataStore.data.map { prefs ->
         val name = prefs[Keys.CITY_NAME]
         if (name.isNullOrBlank()) {
             LocationCity.HYDERABAD
@@ -54,7 +62,7 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    val alertSettings: Flow<UserAlertSettings> = context.dataStore.data.map { prefs ->
+    override val alertSettings: Flow<UserAlertSettings> = context.dataStore.data.map { prefs ->
         UserAlertSettings(
             alertsEnabled = prefs[Keys.ALERTS_ENABLED] ?: false,
             aqiThreshold = prefs[Keys.ALERT_THRESHOLD] ?: 151,
@@ -62,7 +70,7 @@ class UserPreferencesRepository(private val context: Context) {
         )
     }
 
-    suspend fun saveSelectedCity(city: LocationCity) {
+    override suspend fun saveSelectedCity(city: LocationCity) {
         context.dataStore.edit { prefs ->
             prefs[Keys.CITY_NAME] = city.name
             prefs[Keys.CITY_REGION] = city.region
@@ -74,14 +82,14 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun updateAlertSettings(enabled: Boolean, threshold: Int) {
+    override suspend fun updateAlertSettings(enabled: Boolean, threshold: Int) {
         context.dataStore.edit { prefs ->
             prefs[Keys.ALERTS_ENABLED] = enabled
             prefs[Keys.ALERT_THRESHOLD] = threshold
         }
     }
 
-    suspend fun markAlertSent(timestamp: Long) {
+    override suspend fun markAlertSent(timestamp: Long) {
         context.dataStore.edit { prefs ->
             prefs[Keys.LAST_NOTIFIED_AT] = timestamp
         }

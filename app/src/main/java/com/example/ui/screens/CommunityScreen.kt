@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,7 +18,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Groups
@@ -45,6 +48,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.CommunityPostEntity
@@ -69,17 +74,24 @@ fun CommunityScreen(
     }
 
     val userCreatedCount = posts.count { !it.isDemoData }
+    val joinedCount = posts.count { it.isJoined }
+    val totalPledges = posts.sumOf { it.participantsCount }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = 960.dp),
+            .widthIn(max = 960.dp)
+            .testTag("community_list"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Community Hub", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    text = "Community Hub",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.semantics { heading() }
+                )
                 Text(
                     text = "Collaborate on neighborhood carpooling, tree-care drives, clean commuting ideas, and open waste-burning reporting.",
                     style = MaterialTheme.typography.bodySmall,
@@ -91,6 +103,7 @@ fun CommunityScreen(
         // Transparency banner on demonstration vs local mode
         item {
             Surface(
+                modifier = Modifier.semantics(mergeDescendants = true) {},
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer
             ) {
@@ -114,6 +127,37 @@ fun CommunityScreen(
             }
         }
 
+        // Community Sustainability Achievements Summary
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {},
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Community Sustainability Achievements",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.semantics { heading() }
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        AchievementStat("$userCreatedCount", "Local Entries", Modifier.weight(1f))
+                        AchievementStat("$joinedCount", "Your Pledges", Modifier.weight(1f))
+                        AchievementStat("$totalPledges", "Total Pledges", Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
         // Quick action buttons
         item {
             Row(
@@ -127,6 +171,7 @@ fun CommunityScreen(
                     },
                     modifier = Modifier
                         .weight(1f)
+                        .defaultMinSize(minHeight = 48.dp)
                         .testTag("community_create_button")
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -140,6 +185,7 @@ fun CommunityScreen(
                     },
                     modifier = Modifier
                         .weight(1f)
+                        .defaultMinSize(minHeight = 48.dp)
                         .testTag("community_report_waste_button")
                 ) {
                     Icon(Icons.Filled.ReportProblem, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -182,7 +228,8 @@ fun CommunityScreen(
                 ) {
                     Text(
                         text = "Official Open Waste-Burning Channels",
-                        style = MaterialTheme.typography.titleSmall
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.semantics { heading() }
                     )
                     Text(
                         text = "In India, open garbage or dry-leaf burning can be reported via the CPCB Sameer portal/app or your city municipal grievance portal (e.g., GHMC MyGHMC / 155304 in Hyderabad).",
@@ -195,7 +242,8 @@ fun CommunityScreen(
                                 Uri.parse("https://cpcb.nic.in/")
                             )
                             runCatching { context.startActivity(intent) }
-                        }
+                        },
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
                     ) {
                         Text("Open CPCB Official Portal")
                     }
@@ -261,7 +309,12 @@ fun CommunityScreen(
                         }
 
                         if (post.category != "WASTE_REPORT") {
-                            OutlinedButton(onClick = { onToggleJoin(post) }) {
+                            OutlinedButton(
+                                onClick = { onToggleJoin(post) },
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 48.dp)
+                                    .testTag("community_join_button_${post.id}")
+                            ) {
                                 Text(if (post.isJoined) "Joined" else "Join / Pledge")
                             }
                         }
@@ -302,7 +355,10 @@ private fun CreateCommunityPostDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create Community Entry") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -325,38 +381,48 @@ private fun CreateCommunityPostDialog(
                     onValueChange = { title = it },
                     label = { Text("Title") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("community_dialog_title")
                 )
                 OutlinedTextField(
                     value = area,
                     onValueChange = { area = it },
                     label = { Text("Neighborhood / City") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("community_dialog_area")
                 )
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("Details / Reporting Notes") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("community_dialog_desc")
                 )
                 if (errorText != null) {
                     Text(
                         text = errorText!!,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("community_dialog_error")
                     )
                 }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                if (title.isBlank() || description.isBlank()) {
-                    errorText = "Please enter both a title and details."
-                } else {
-                    onCreate(category, title, description, area)
-                }
-            }) {
+            Button(
+                onClick = {
+                    if (title.isBlank() || description.isBlank()) {
+                        errorText = "Please enter both a title and details."
+                    } else {
+                        onCreate(category, title, description, area)
+                    }
+                },
+                modifier = Modifier.testTag("community_dialog_save")
+            ) {
                 Text("Save Entry")
             }
         },
@@ -364,4 +430,25 @@ private fun CreateCommunityPostDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+@Composable
+private fun AchievementStat(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+    }
 }

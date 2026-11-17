@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -48,6 +49,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
@@ -56,9 +60,11 @@ import com.example.domain.model.IndianCpcbResult
 import com.example.domain.model.LocationCity
 import com.example.ui.AirQualityUiState
 import com.example.ui.DashboardInsightUiState
+import com.example.ui.components.AiStatusBanner
 import com.example.ui.components.AqiSeverityBadge
+import com.example.ui.components.AqiSeverityScaleBar
+import com.example.ui.components.HealthEnvironmentalDisclaimer
 import com.example.ui.components.HourlyAqiTrendChart
-import com.example.ui.components.SampleAiNoticeBanner
 import com.example.ui.navigation.AirCareSection
 import java.util.Locale
 
@@ -82,7 +88,8 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 960.dp)
-                .align(Alignment.TopCenter),
+                .align(Alignment.TopCenter)
+                .testTag("dashboard_list"),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -138,14 +145,15 @@ fun DashboardScreen(
                             ) {
                                 Surface(
                                     modifier = Modifier
+                                        .defaultMinSize(minHeight = 48.dp)
                                         .clip(RoundedCornerShape(50))
                                         .clickable(onClick = onOpenCitySearch)
                                         .testTag("dashboard_location_chip"),
-                                    color = Color.White.copy(alpha = 0.2f),
+                                    color = Color.White.copy(alpha = 0.22f),
                                     shape = RoundedCornerShape(50)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
@@ -380,7 +388,7 @@ fun DashboardScreen(
                                         style = MaterialTheme.typography.titleLarge
                                     )
                                 }
-                                SampleAiNoticeBanner(
+                                AiStatusBanner(
                                     text = dashboardInsight.notice,
                                     isLiveGemini = !dashboardInsight.isSamplePreview
                                 )
@@ -427,7 +435,8 @@ fun DashboardScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "Explore All 9 AirCare Modules",
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.semantics { heading() }
                     )
                     val cols = if (isWide) 3 else 2
                     val rows = AirCareSection.entries.chunked(cols)
@@ -440,6 +449,7 @@ fun DashboardScreen(
                                 Card(
                                     modifier = Modifier
                                         .weight(1f)
+                                        .defaultMinSize(minHeight = 48.dp)
                                         .clickable { onNavigate(section) }
                                         .testTag("quick_nav_${section.route}"),
                                     colors = CardDefaults.cardColors(
@@ -453,7 +463,7 @@ fun DashboardScreen(
                                     ) {
                                         Icon(
                                             imageVector = section.selectedIcon,
-                                            contentDescription = section.title,
+                                            contentDescription = null,
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
@@ -476,6 +486,10 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+
+            item {
+                HealthEnvironmentalDisclaimer()
             }
         }
     }
@@ -509,6 +523,10 @@ private fun LiveSnapshotSection(
                         text = snapshot.usAqi?.toString() ?: "N/A",
                         style = MaterialTheme.typography.displaySmall,
                         color = snapshot.severity.accentColor
+                    )
+                    AqiSeverityScaleBar(
+                        usAqi = snapshot.usAqi,
+                        severity = snapshot.severity
                     )
                     Text(
                         text = snapshot.severity.alertHeadline,
@@ -645,7 +663,10 @@ private fun PollutantChip(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            val reading = if (value == null) "unavailable" else String.format(Locale.US, "%.1f", value)
+            contentDescription = "$label: $reading $unit"
+        },
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp

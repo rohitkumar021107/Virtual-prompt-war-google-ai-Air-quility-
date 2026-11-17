@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,6 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ChallengeDayEntity
@@ -67,7 +71,8 @@ fun ChallengeScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = 960.dp),
+            .widthIn(max = 960.dp)
+            .testTag("challenge_list"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -78,14 +83,23 @@ fun ChallengeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("7-Day Clean Air Challenge", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        text = "7-Day Clean Air Challenge",
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.semantics { heading() }
+                    )
                     Text(
                         text = "Build lasting winter smog-protection and low-emission habits.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                OutlinedButton(onClick = onResetWeek) {
+                OutlinedButton(
+                    onClick = onResetWeek,
+                    modifier = Modifier
+                        .defaultMinSize(minHeight = 48.dp)
+                        .testTag("challenge_reset_button")
+                ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                     Text(" Reset")
                 }
@@ -152,7 +166,11 @@ fun ChallengeScreen(
         // Badges Strip
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Achievement Badges", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Achievement Badges",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() }
+                )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -160,6 +178,9 @@ fun ChallengeScreen(
                     CatalogData.badges.forEach { (title, req, neededDays) ->
                         val unlocked = completedCount >= neededDays
                         Surface(
+                            modifier = Modifier.semantics(mergeDescendants = true) {
+                                contentDescription = "$title badge: ${if (unlocked) "Unlocked" else "Locked"}. $req"
+                            },
                             shape = RoundedCornerShape(14.dp),
                             color = if (unlocked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
                         ) {

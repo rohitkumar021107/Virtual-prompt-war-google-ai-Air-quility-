@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -20,7 +21,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
@@ -59,9 +63,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
@@ -75,13 +83,15 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
-fun SampleAiNoticeBanner(
+fun AiStatusBanner(
     modifier: Modifier = Modifier,
     text: String = stringResource(R.string.sample_ai_notice),
     isLiveGemini: Boolean = true
 ) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
         shape = RoundedCornerShape(14.dp),
         color = if (isLiveGemini) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
         tonalElevation = 1.dp
@@ -92,8 +102,8 @@ fun SampleAiNoticeBanner(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.Info,
-                contentDescription = "AI Status",
+                imageVector = if (isLiveGemini) Icons.Filled.AutoAwesome else Icons.Filled.Info,
+                contentDescription = null,
                 tint = if (isLiveGemini) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.size(20.dp)
             )
@@ -108,12 +118,46 @@ fun SampleAiNoticeBanner(
 }
 
 @Composable
+fun HealthEnvironmentalDisclaimer(
+    modifier: Modifier = Modifier,
+    text: String = "Disclaimer: AirCare AI provides informational environmental guidance based on Open-Meteo modelled data and standard emission factors. It is not medical advice; consult a healthcare professional for respiratory symptoms."
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 fun AqiSeverityBadge(
     severity: AqiSeverity,
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = "Air quality severity: ${severity.label}"
+        },
         shape = RoundedCornerShape(50),
         color = severity.containerColor
     ) {
@@ -135,6 +179,68 @@ fun AqiSeverityBadge(
                 fontWeight = FontWeight.Bold
             )
         }
+    }
+}
+
+@Composable
+fun AqiSeverityScaleBar(
+    usAqi: Int?,
+    severity: AqiSeverity,
+    modifier: Modifier = Modifier
+) {
+    val normalized = ((usAqi ?: 0).toFloat() / 350f).coerceIn(0f, 1f)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = if (usAqi != null) {
+                    "Pollution severity indicator at US AQI $usAqi, category ${severity.label}"
+                } else {
+                    "Pollution severity indicator unavailable"
+                }
+            },
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            AqiSeverity.entries.forEach { tier ->
+                val isCurrent = tier == severity && usAqi != null
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(if (isCurrent) 10.dp else 6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            if (isCurrent) tier.accentColor else tier.accentColor.copy(alpha = 0.35f)
+                        )
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "0 Good",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = if (usAqi != null) "Current: $usAqi (${severity.rangeText})" else "No reading",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = severity.accentColor
+            )
+            Text(
+                text = "301+ Hazardous",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        // Keep normalized reference used cleanly for position semantics
+        if (normalized < 0f) Spacer(Modifier.height(0.dp))
     }
 }
 
@@ -173,9 +279,17 @@ fun HourlyAqiTrendChart(
 
     val minVal = (validValues.minOrNull() ?: 0).coerceAtLeast(0)
     val maxVal = ((validValues.maxOrNull() ?: 100) + 15).coerceAtLeast(minVal + 20)
+    val peakVal = validValues.maxOrNull() ?: 0
+    val lowVal = validValues.minOrNull() ?: 0
     val surfaceLine = MaterialTheme.colorScheme.outline
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics {
+                contentDescription = "24 hour US AQI trend chart ranging from $lowVal to $peakVal"
+            }
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -186,7 +300,7 @@ fun HourlyAqiTrendChart(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Range: $minVal–$maxVal",
+                text = "Min $lowVal • Peak $peakVal",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -203,7 +317,6 @@ fun HourlyAqiTrendChart(
             val padBottom = 18f
             val chartH = (h - padTop - padBottom).coerceAtLeast(10f)
 
-            // Subtle horizontal grid lines
             for (i in 0..3) {
                 val y = padTop + (chartH / 3f) * i
                 drawLine(
@@ -290,9 +403,22 @@ fun Co2ComparisonBarChart(
     ) {
         comparisons.forEachIndexed { idx, item ->
             val ratio = (item.monthlyKgCo2 / maxKg).toFloat().coerceIn(0f, 1f)
-            val barColor = if (idx == 0) Color(0xFFDC2626) else if (item.monthlyKgCo2 == 0.0) Color(0xFF16A34A) else if (idx % 2 == 0) primary else secondary
+            val barColor = when {
+                idx == 0 -> Color(0xFFB91C1C)
+                item.monthlyKgCo2 == 0.0 -> Color(0xFF15803D)
+                idx % 2 == 0 -> primary
+                else -> secondary
+            }
+            val savedNote = if (idx > 0 && item.savedVsBaselineKg > 0.0) {
+                " (saves ${String.format(Locale.US, "%.1f", item.savedVsBaselineKg)} kg)"
+            } else ""
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(
+                modifier = Modifier.semantics(mergeDescendants = true) {
+                    contentDescription = "${item.modeLabel}: ${String.format(Locale.US, "%.1f", item.monthlyKgCo2)} kilograms CO2e per month$savedNote"
+                },
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -307,7 +433,7 @@ fun Co2ComparisonBarChart(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "${String.format(Locale.US, "%.1f", item.monthlyKgCo2)} kg CO₂e/mo",
+                        text = "${String.format(Locale.US, "%.1f", item.monthlyKgCo2)} kg/mo$savedNote",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = barColor
@@ -343,6 +469,7 @@ fun CitySearchBottomSheet(
     onDismiss: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -385,7 +512,12 @@ fun CitySearchBottomSheet(
                 label = { Text("Search any city (Open-Meteo Geocoding)") },
                 placeholder = { Text("e.g., Hyderabad, Delhi, Pune, London") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    onSearchQuery(query)
+                    keyboardController?.hide()
+                })
             )
 
             Text(
@@ -468,6 +600,7 @@ fun CitySearchBottomSheet(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .defaultMinSize(minHeight = 48.dp)
                                         .clickable {
                                             onSelectCity(city)
                                             onDismiss()

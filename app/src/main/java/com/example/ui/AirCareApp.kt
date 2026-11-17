@@ -50,6 +50,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -137,7 +139,8 @@ fun AirCareApp(
                             Text(
                                 text = "AirCare AI",
                                 style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.semantics { heading() }
                             )
                             Text(
                                 text = "Breathe Better. Live Smarter.",
@@ -191,7 +194,8 @@ fun AirCareApp(
                                     text = currentSection.title,
                                     style = MaterialTheme.typography.titleMedium,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.semantics { heading() }
                                 )
                                 Text(
                                     text = selectedCity.name,
@@ -373,7 +377,8 @@ fun AirCareApp(
                                     airQualityState = airQualityState,
                                     messages = chatMessages,
                                     isStreaming = isStreaming,
-                                    onSendQuestion = { viewModel.sendAssistantQuestion(it) }
+                                    onSendQuestion = { viewModel.sendAssistantQuestion(it) },
+                                    onClearChat = { viewModel.clearAssistantChat() }
                                 )
                             }
                         }

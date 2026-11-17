@@ -29,6 +29,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.domain.model.CommuteMode
@@ -61,7 +65,11 @@ fun ImpactCalculatorScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Environmental Impact Calculator", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    text = "Environmental Impact Calculator",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.semantics { heading() }
+                )
                 Text(
                     text = "Estimate daily and monthly tailpipe CO₂e avoided when switching from private vehicles to public transit, carpooling, or active mobility.",
                     style = MaterialTheme.typography.bodySmall,
@@ -91,7 +99,10 @@ fun ImpactCalculatorScreen(
                                 impactState.alternativeMode
                             )
                         },
-                        valueRange = 2f..80f
+                        valueRange = 2f..80f,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Daily round trip distance ${impactState.roundTripKm} kilometers"
+                        }
                     )
 
                     Text(
@@ -108,7 +119,10 @@ fun ImpactCalculatorScreen(
                                 impactState.alternativeMode
                             )
                         },
-                        valueRange = 4f..30f
+                        valueRange = 4f..30f,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Commute days per month ${impactState.commuteDaysPerMonth} days"
+                        }
                     )
 
                     Text("Current Baseline Vehicle", style = MaterialTheme.typography.labelLarge)
@@ -166,19 +180,25 @@ fun ImpactCalculatorScreen(
                     title = "Daily Avoided",
                     value = "${String.format(Locale.US, "%.2f", calc.dailyAvoidedKg)} kg",
                     subtitle = "CO₂e / day",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("daily_avoided_card")
                 )
                 KpiCard(
                     title = "Monthly Saved",
                     value = "${String.format(Locale.US, "%.1f", calc.monthlyAvoidedKg)} kg",
                     subtitle = "CO₂e / month",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("monthly_saved_card")
                 )
                 KpiCard(
                     title = "Annual Pace",
                     value = "${String.format(Locale.US, "%.0f", calc.annualAvoidedKg)} kg",
                     subtitle = "CO₂e / year",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("annual_pace_card")
                 )
             }
         }
@@ -190,7 +210,11 @@ fun ImpactCalculatorScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Monthly Emissions by Commute Mode", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = "Monthly Emissions by Commute Mode",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.semantics { heading() }
+                    )
                     Co2ComparisonBarChart(comparisons = calc.modeComparisons)
                 }
             }
@@ -250,7 +274,9 @@ private fun KpiCard(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = "$title: $value $subtitle"
+        },
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
         tonalElevation = 1.dp

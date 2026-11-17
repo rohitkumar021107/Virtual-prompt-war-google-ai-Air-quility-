@@ -3,16 +3,24 @@ package com.example.notifications
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.example.MainActivity
 import com.example.R
 import com.example.domain.model.AirQualitySnapshot
 
-class AirAlertNotifier(private val context: Context) {
+interface AlertNotifier {
+    fun hasNotificationPermission(): Boolean
+    fun notifyIfNeeded(snapshot: AirQualitySnapshot, threshold: Int): Boolean
+}
+
+class AirAlertNotifier(private val context: Context) : AlertNotifier {
 
     fun ensureChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -28,7 +36,7 @@ class AirAlertNotifier(private val context: Context) {
         }
     }
 
-    fun hasNotificationPermission(): Boolean {
+    override fun hasNotificationPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.checkSelfPermission(
                 context,
@@ -39,11 +47,21 @@ class AirAlertNotifier(private val context: Context) {
         }
     }
 
-    fun notifyIfNeeded(snapshot: AirQualitySnapshot, threshold: Int): Boolean {
+    override fun notifyIfNeeded(snapshot: AirQualitySnapshot, threshold: Int): Boolean {
         val usAqi = snapshot.usAqi ?: return false
         if (usAqi < threshold || !hasNotificationPermission()) return false
 
         ensureChannel()
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("AirCare Alert: ${snapshot.location.name} AQI $usAqi")
@@ -52,6 +70,7 @@ class AirAlertNotifier(private val context: Context) {
                 NotificationCompat.BigTextStyle()
                     .bigText("${snapshot.severity.precautionSummary}\nSource: Open-Meteo (${snapshot.lastUpdatedIso})")
             )
+            .setContentIntent(contentIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()

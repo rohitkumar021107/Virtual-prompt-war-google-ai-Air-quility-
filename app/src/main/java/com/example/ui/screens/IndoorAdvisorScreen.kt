@@ -36,28 +36,45 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.domain.model.CatalogData
+import com.example.ui.components.HealthEnvironmentalDisclaimer
+
+private val BUDGET_FILTERS = listOf("All Budgets", "Zero Cost", "Low Cost", "Medium–High")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun IndoorAdvisorScreen() {
     var selectedCategory by remember { mutableStateOf("All") }
+    var selectedBudget by remember { mutableStateOf("All Budgets") }
     val categories = remember {
         listOf("All") + CatalogData.indoorAdvisories.map { it.category }.distinct()
     }
-    val filtered = remember(selectedCategory) {
-        if (selectedCategory == "All") CatalogData.indoorAdvisories
-        else CatalogData.indoorAdvisories.filter { it.category == selectedCategory }
+    val filtered = remember(selectedCategory, selectedBudget) {
+        CatalogData.indoorAdvisories.filter { item ->
+            val catMatch = selectedCategory == "All" || item.category == selectedCategory
+            val budgetMatch = when (selectedBudget) {
+                "Zero Cost" -> item.budgetTag.contains("Zero", ignoreCase = true)
+                "Low Cost" -> item.budgetTag.contains("Low", ignoreCase = true)
+                "Medium–High" -> item.budgetTag.contains("Medium", ignoreCase = true) ||
+                    item.budgetTag.contains("High", ignoreCase = true)
+                else -> true
+            }
+            catMatch && budgetMatch
+        }
     }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = 960.dp),
+            .widthIn(max = 960.dp)
+            .testTag("indoor_list"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -80,7 +97,11 @@ fun IndoorAdvisorScreen() {
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Indoor Air Quality Advisor", style = MaterialTheme.typography.headlineSmall)
+                        Text(
+                            text = "Indoor Air Quality Advisor",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.semantics { heading() }
+                        )
                         Text(
                             text = "Practical, evidence-based ways to lower indoor PM2.5 and combustion gases—including honest benefits and limitations for every method.",
                             style = MaterialTheme.typography.bodySmall,
@@ -94,6 +115,7 @@ fun IndoorAdvisorScreen() {
         // Explicit scientific limitation notice regarding indoor plants
         item {
             Surface(
+                modifier = Modifier.semantics(mergeDescendants = true) {},
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer
             ) {
@@ -119,23 +141,50 @@ fun IndoorAdvisorScreen() {
         }
 
         item {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                categories.forEach { cat ->
-                    FilterChip(
-                        selected = selectedCategory == cat,
-                        onClick = { selectedCategory = cat },
-                        label = { Text(cat) }
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Filter by Category",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.semantics { heading() }
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    categories.forEach { cat ->
+                        FilterChip(
+                            selected = selectedCategory == cat,
+                            onClick = { selectedCategory = cat },
+                            label = { Text(cat) }
+                        )
+                    }
+                }
+                Text(
+                    text = "Filter by Household Budget",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.semantics { heading() }
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    BUDGET_FILTERS.forEach { budget ->
+                        FilterChip(
+                            selected = selectedBudget == budget,
+                            onClick = { selectedBudget = budget },
+                            label = { Text(budget) },
+                            modifier = Modifier.testTag("indoor_budget_chip_$budget")
+                        )
+                    }
                 }
             }
         }
 
         items(filtered, key = { it.id }) { item ->
             ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {},
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
@@ -194,6 +243,10 @@ fun IndoorAdvisorScreen() {
                     }
                 }
             }
+        }
+
+        item {
+            HealthEnvironmentalDisclaimer()
         }
     }
 }

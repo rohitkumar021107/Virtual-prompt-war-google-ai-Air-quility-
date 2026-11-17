@@ -3,12 +3,14 @@ package com.example.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.AirCareDao
 import com.example.data.local.AirCareDatabase
 import com.example.data.local.ChallengeDayEntity
 import com.example.data.local.CommunityPostEntity
 import com.example.data.local.FamilyProfileEntity
 import com.example.data.local.UserAlertSettings
 import com.example.data.local.UserPreferencesRepository
+import com.example.data.local.UserPreferencesStorage
 import com.example.data.repository.AiRepository
 import com.example.data.repository.AirQualityRepository
 import com.example.data.repository.FirebaseAiRepository
@@ -21,13 +23,16 @@ import com.example.domain.model.ImpactCalculation
 import com.example.domain.model.ImpactCalculator
 import com.example.domain.model.LocationCity
 import com.example.notifications.AirAlertNotifier
+import com.example.notifications.AlertNotifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -70,14 +75,27 @@ data class ImpactFormState(
     )
 )
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+class MainViewModel internal constructor(
+    application: Application,
+    private val dao: AirCareDao,
+    private val prefsRepo: UserPreferencesStorage,
+    private val airQualityRepo: AirQualityRepository,
+    private val aiRepo: AiRepository,
+    private val notifier: AlertNotifier,
+    private val seedDatabase: suspend () -> Unit,
+    autoInitialize: Boolean
+) : AndroidViewModel(application) {
 
-    private val database = AirCareDatabase.getInstance(application)
-    private val dao = database.airCareDao()
-    private val prefsRepo = UserPreferencesRepository(application)
-    private val airQualityRepo = AirQualityRepository()
-    private val aiRepo: AiRepository = FirebaseAiRepository()
-    private val notifier = AirAlertNotifier(application)
+    constructor(application: Application) : this(
+        application = application,
+        dao = AirCareDatabase.getInstance(application).airCareDao(),
+        prefsRepo = UserPreferencesRepository(application),
+        airQualityRepo = AirQualityRepository(),
+        aiRepo = FirebaseAiRepository(),
+        notifier = AirAlertNotifier(application),
+        seedDatabase = { AirCareDatabase.getInstance(application).seedInitialDataIfNeeded() },
+        autoInitialize = true
+    )
 
     val selectedCity: StateFlow<LocationCity> = prefsRepo.selectedCity
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LocationCity.HYDERABAD)
@@ -86,13 +104,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserAlertSettings())
 
     val familyProfile: StateFlow<FamilyProfileEntity> = dao.observeFamilyProfile()
-        .let { flow ->
-            val state = MutableStateFlow(FamilyProfileEntity())
-            viewModelScope.launch {
-                flow.collect { entity -> if (entity != null) state.value = entity }
-            }
-            state
-        }
+        .filterNotNull()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FamilyProfileEntity())
 
     val challengeDays: StateFlow<List<ChallengeDayEntity>> = dao.observeChallengeDays()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -115,16 +128,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _impactState = MutableStateFlow(ImpactFormState())
     val impactState: StateFlow<ImpactFormState> = _impactState.asStateFlow()
 
-    private val _chatMessages = MutableStateFlow<List<ChatMessage>>(
-        listOf(
-            ChatMessage(
-                id = "welcome",
-                isUser = false,
-                text = "Hello! I am AirCare Assistant, powered by Gemini via Firebase AI Logic. Ask me about protecting your family from winter smog, outdoor exercise safety, indoor PM2.5 reduction, or sustainable commuting.",
-                isSamplePreview = false
-            )
-        )
-    )
+    private val _chatMessages = MutableStateFlow(listOf(initialWelcomeMessage()))
     val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
 
     private val _isAssistantStreaming = MutableStateFlow(false)
@@ -134,10 +138,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val alertBannerStatus: StateFlow<String?> = _alertBannerStatus.asStateFlow()
 
     private var chatJob: Job? = null
+    private var citySearchJob: Job? = null
 
     init {
+        if (autoInitialize) {
+            initialize()
+        }
+    }
+
+    fun initialize() {
         viewModelScope.launch {
-            database.seedInitialDataIfNeeded()
+            seedDatabase()
             val initialCity = prefsRepo.selectedCity.first()
             refreshAirQuality(initialCity)
         }
@@ -190,14 +201,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val usAqi = snapshot.usAqi ?: return
         if (settings.alertsEnabled && usAqi >= settings.aqiThreshold) {
             val now = System.currentTimeMillis()
-            // Prevent repeating notification within 30 minutes for the same refresh cycle
             if (now - settings.lastNotifiedTimestamp > 30 * 60 * 1000L) {
                 val posted = notifier.notifyIfNeeded(snapshot, settings.aqiThreshold)
                 if (posted) {
                     prefsRepo.markAlertSent(now)
-                    _alertBannerStatus.value = "Alert sent: ${snapshot.location.name} US AQI ($usAqi) exceeded your threshold (${settings.aqiThreshold})."
+                    _alertBannerStatus.value =
+                        "Alert sent: ${snapshot.location.name} US AQI ($usAqi) exceeded your threshold (${settings.aqiThreshold})."
                 } else if (!notifier.hasNotificationPermission()) {
-                    _alertBannerStatus.value = "AQI ($usAqi) exceeded your threshold (${settings.aqiThreshold}), but notification permission is not granted."
+                    _alertBannerStatus.value =
+                        "AQI ($usAqi) exceeded your threshold (${settings.aqiThreshold}), but notification permission is not granted."
                 }
             }
         }
@@ -205,19 +217,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectCity(city: LocationCity) {
         viewModelScope.launch {
+            citySearchJob?.cancel()
             prefsRepo.saveSelectedCity(city)
             _citySearchState.value = CitySearchState.Idle
             refreshAirQuality(city)
         }
     }
 
-    fun searchCities(query: String) {
+    fun searchCities(query: String, debounceMs: Long = 300L) {
+        citySearchJob?.cancel()
         val trimmed = query.trim()
         if (trimmed.length < 2) {
             _citySearchState.value = CitySearchState.Idle
             return
         }
-        viewModelScope.launch {
+        citySearchJob = viewModelScope.launch {
+            if (debounceMs > 0) delay(debounceMs)
             _citySearchState.value = CitySearchState.Searching
             airQualityRepo.searchCities(trimmed).fold(
                 onSuccess = { list ->
@@ -233,18 +248,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearCitySearch() {
+        citySearchJob?.cancel()
         _citySearchState.value = CitySearchState.Idle
     }
 
     fun updateAlertSettings(enabled: Boolean, threshold: Int) {
         viewModelScope.launch {
-            prefsRepo.updateAlertSettings(enabled, threshold)
+            val clampedThreshold = threshold.coerceIn(51, 301)
+            prefsRepo.updateAlertSettings(enabled, clampedThreshold)
             if (enabled) {
                 val currentSnapshot = (_airQualityState.value as? AirQualityUiState.Success)?.snapshot
                 if (currentSnapshot != null) {
                     val usAqi = currentSnapshot.usAqi
-                    if (usAqi != null && usAqi >= threshold) {
-                        val sent = notifier.notifyIfNeeded(currentSnapshot, threshold)
+                    if (usAqi != null && usAqi >= clampedThreshold) {
+                        val sent = notifier.notifyIfNeeded(currentSnapshot, clampedThreshold)
                         _alertBannerStatus.value = if (sent) {
                             "Alert active & triggered: ${currentSnapshot.location.name} AQI is $usAqi."
                         } else if (!notifier.hasNotificationPermission()) {
@@ -253,8 +270,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             null
                         }
                     } else {
-                        _alertBannerStatus.value = "Alerts enabled for US AQI ≥ $threshold."
+                        _alertBannerStatus.value = "Alerts enabled for US AQI ≥ $clampedThreshold."
                     }
+                } else {
+                    _alertBannerStatus.value = "Alerts enabled for US AQI ≥ $clampedThreshold."
                 }
             } else {
                 _alertBannerStatus.value = null
@@ -267,10 +286,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun saveAndGenerateFamilyPlan(profile: FamilyProfileEntity) {
         viewModelScope.launch {
             _familyPlanState.value = FamilyPlanUiState.Loading
-            dao.saveFamilyProfile(profile.copy(id = 1))
+            val normalized = profile.copy(id = 1)
+            dao.saveFamilyProfile(normalized)
             val currentSnapshot = (_airQualityState.value as? AirQualityUiState.Success)?.snapshot
-            aiRepo.generateFamilyPlan(profile, currentSnapshot).fold(
-                onSuccess = { plan -> _familyPlanState.value = FamilyPlanUiState.Success(plan) },
+            aiRepo.generateFamilyPlan(normalized, currentSnapshot).fold(
+                onSuccess = { plan ->
+                    _familyPlanState.value = FamilyPlanUiState.Success(plan)
+                    generateDashboardInsight(currentSnapshot)
+                },
                 onFailure = { e ->
                     _familyPlanState.value = FamilyPlanUiState.Error(
                         e.localizedMessage ?: "Could not generate family protection plan."
@@ -286,12 +309,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         baseline: CommuteMode = _impactState.value.baselineMode,
         alternative: CommuteMode = _impactState.value.alternativeMode
     ) {
+        val safeKm = roundTripKm.coerceIn(1, 200)
+        val safeDays = commuteDays.coerceIn(1, 31)
         _impactState.value = ImpactFormState(
-            roundTripKm = roundTripKm,
-            commuteDaysPerMonth = commuteDays,
+            roundTripKm = safeKm,
+            commuteDaysPerMonth = safeDays,
             baselineMode = baseline,
             alternativeMode = alternative,
-            calculation = ImpactCalculator.calculate(roundTripKm, commuteDays, baseline, alternative)
+            calculation = ImpactCalculator.calculate(safeKm, safeDays, baseline, alternative)
         )
     }
 
@@ -337,6 +362,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
         }
+    }
+
+    fun clearAssistantChat() {
+        chatJob?.cancel()
+        _isAssistantStreaming.value = false
+        _chatMessages.value = listOf(initialWelcomeMessage())
     }
 
     fun sendAssistantQuestion(question: String) {
@@ -390,4 +421,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    private fun initialWelcomeMessage() = ChatMessage(
+        id = "welcome",
+        isUser = false,
+        text = "Hello! I am AirCare Assistant, powered by Gemini via Firebase AI Logic. Ask me about protecting your family from winter smog, outdoor exercise safety, indoor PM2.5 reduction, or sustainable commuting.",
+        isSamplePreview = false
+    )
 }

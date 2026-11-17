@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,7 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsBike
+import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -32,10 +33,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.domain.model.CatalogData
 import com.example.ui.AirQualityUiState
+import com.example.ui.components.HealthEnvironmentalDisclaimer
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -64,7 +69,11 @@ fun AlternativesScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Sustainable Alternatives", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    text = "Sustainable Alternatives",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.semantics { heading() }
+                )
                 Text(
                     text = "Lower-emission mobility, household energy, and zero-burning practices tailored to local air quality.",
                     style = MaterialTheme.typography.bodySmall,
@@ -87,7 +96,7 @@ fun AlternativesScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.DirectionsBike,
+                        imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
                         contentDescription = null,
                         tint = liveSnapshot?.severity?.accentColor ?: MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.size(26.dp)
@@ -126,7 +135,9 @@ fun AlternativesScreen(
 
         items(items, key = { it.id }) { alt ->
             ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {},
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
@@ -191,10 +202,17 @@ fun AlternativesScreen(
         item {
             Button(
                 onClick = onOpenImpactCalculator,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
+                    .testTag("alternatives_impact_cta")
             ) {
                 Text("Estimate Your CO₂ Savings in Impact Calculator")
             }
+        }
+
+        item {
+            HealthEnvironmentalDisclaimer()
         }
     }
 }
